@@ -80,10 +80,10 @@ flowchart LR
     EM --> INV[Targeted cache invalidation]
   end
   subgraph Ask["POST /ask"]
-    Q[Question] --> G{Guards} --> C{Cache} --> H[Hybrid search<br/>dense + BM25, RRF]
+    Q[Question] --> G{"Input guards"} --> C{"Cache hit?"} --> H[Hybrid search<br/>dense + BM25, RRF]
     H --> QD
-    H --> RR[Cohere Rerank v4 Pro<br/>Fast fallback] --> GATE{Score ≥ threshold?}
-    GATE -- no --> REF[Refusal, sources = []]
+    H --> RR[Cohere Rerank v4 Pro<br/>Fast fallback] --> GATE{"Rerank score at or above threshold?"}
+    GATE -- no --> REF["Refusal: sources = empty list"]
     GATE -- yes --> LLM[OpenRouter LLM<br/>DeepSeek V4.1 Flash → Gemini 2.5 Flash Lite → GLM 4.7 Flash] --> PP[Citation mapping<br/>link and leak checks] --> A[answer + sources]
   end
 ```
