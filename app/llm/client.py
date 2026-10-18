@@ -23,12 +23,12 @@ class LLMClient:
                                   timeout=s.llm_timeout_seconds, max_retries=0)
         self.sem = asyncio.Semaphore(s.llm_max_concurrency)
         self.credit_remaining: float | None = None
-        self.credit_checked = 0.0
+        self.credit_checked: float | None = None
         self.calls = 0
         self.cost_usd = 0.0
 
     async def refresh_credit(self, force: bool = False) -> float | None:
-        if not force and time.monotonic() - self.credit_checked < 60:
+        if not force and self.credit_checked is not None and time.monotonic() - self.credit_checked < 60:
             return self.credit_remaining
         try:
             r = await self.http.get(f"{self.s.openrouter_base_url}/key", timeout=5,

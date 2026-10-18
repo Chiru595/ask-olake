@@ -161,10 +161,10 @@ class Pipeline:
         self.s, self.q, self.dense, self.sparse = s, q, dense, sparse
         self.reranker, self.llm, self.cache = reranker, llm, cache
         self._pinned: list[dict] = []
-        self._pinned_at = 0.0
+        self._pinned_at: float | None = None
 
     async def pinned(self) -> list[dict]:
-        if time.monotonic() - self._pinned_at > 300:
+        if self._pinned_at is None or time.monotonic() - self._pinned_at > 300 or not self._pinned:
             try:
                 pts, _ = await self.q.scroll(self.s.qdrant_collection, limit=64, with_vectors=False, with_payload=True,
                                              scroll_filter=f_doc(PINNED_DOC))
