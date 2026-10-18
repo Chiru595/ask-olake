@@ -1,0 +1,23 @@
+# Drives freshness for the serverless deployment: every 5 minutes, run one incremental sync cycle.
+name: sync-index
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Incremental re-index
+        env:
+          ASK_OLAKE_URL: ${{ secrets.ASK_OLAKE_URL }}
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+        run: |
+          if [ -z "$ASK_OLAKE_URL" ] || [ -z "$ADMIN_KEY" ]; then
+            echo "ASK_OLAKE_URL / ADMIN_KEY secrets not set; skipping"; exit 0
+          fi
+          curl -fsS --max-time 290 -X POST "$ASK_OLAKE_URL/reindex" \
+            -H "X-Admin-Key: $ADMIN_KEY" -H 'Content-Type: application/json' \
+            -d '{"scope":"incremental"}'

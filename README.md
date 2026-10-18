@@ -138,7 +138,7 @@ index.py             Vercel entry point;  Dockerfile / docker-compose.yml for co
 - **Repos:** `GET /commits/{branch}` with an ETag (304 when unchanged). On a new SHA, the compare API lists changed files; added and modified files are fetched raw at that SHA and re-chunked, removed and renamed files are deleted. A failed compare, or one with 300+ files, falls back to a fresh shallow clone plus a chunk-hash diff.
 - **Cache:** answers are cached for an hour, keyed by the normalised question. A sync evicts only the answers that used a changed or deleted chunk, answers whose question embedding is ≥ 0.75 cosine-similar to a new chunk, and all cached refusals (new content may now answer them). A sync with no changes evicts nothing.
 - **State:** poller state (SHAs, ETags, per-page hashes) lives in a small Qdrant collection, so a restart resumes where it left off. Changing the embedding model forces a full re-index.
-- **On Vercel (serverless):** there is no always-on process, so freshness comes from two places. When `/ask`, `/ask/stream` or `/status` is hit and the last cycle is older than `POLL_INTERVAL_SECONDS`, an incremental cycle starts in the background. A GitHub Actions cron (`.github/workflows/sync.yml`, every 5 minutes) also calls `POST /reindex` with `{"scope": "incremental"}`, which runs the cycle inline (typically about 1 s when nothing changed). Full re-indexes run locally with `python -m scripts.full_index`.
+- **On Vercel (serverless):** there is no always-on process, so freshness comes from two places. When `/ask`, `/ask/stream` or `/status` is hit and the last cycle is older than `POLL_INTERVAL_SECONDS`, an incremental cycle starts in the background. A GitHub Actions cron (`ops/sync-workflow.yml`; copy it to `.github/workflows/` from the GitHub web UI, every 5 minutes) also calls `POST /reindex` with `{"scope": "incremental"}`, which runs the cycle inline (typically about 1 s when nothing changed). Full re-indexes run locally with `python -m scripts.full_index`.
 - **Check it:** `/status` shows `last_poll`, `last_change_detected`, the indexed SHA, chunk and page counts per source, cache stats and the LLM credit left. `POST /reindex` (with an `X-Admin-Key` header) accepts `{"scope": "incremental" | "full"}`.
 
 ## Production readiness and guardrails
@@ -197,7 +197,7 @@ The first start runs a full index (about 5 minutes, throttled to the embedding p
 2. Import the GitHub repo in Vercel (Add New → Project). `index.py` exposes the FastAPI `app`, so Vercel detects it with no extra config.
 3. Add the variables from `.env.example` under Settings → Environment Variables, and tick **Enable access to System Environment Variables** so `/version` gets `VERCEL_GIT_COMMIT_SHA` and `VERCEL_DEPLOYMENT_ID`.
 4. Every push to `main` redeploys.
-5. For the sync cron, add the repo secrets `ASK_OLAKE_URL` (your Vercel URL) and `ADMIN_KEY`.
+5. For the sync cron, add `ops/sync-workflow.yml` as `.github/workflows/sync.yml` (GitHub web UI → Add file) and the repo secrets `ASK_OLAKE_URL` (your Vercel URL) and `ADMIN_KEY`.
 
 The Dockerfile still runs anywhere Docker does (it listens on `$PORT`).
 
