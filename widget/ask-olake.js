@@ -219,8 +219,8 @@ code{font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace}.ct :not(pre)>code{ba
 .copy{border:1px solid #475569;border-radius:6px;padding:1px 8px;font-size:11.5px;color:#cbd5e1}.copy:hover{color:#fff}
 pre{margin:0;padding:10px 12px;overflow-x:auto}pre code{white-space:pre}
 .tw{overflow-x:auto}table{border-collapse:collapse;font-size:13px;min-width:100%}th,td{border:1px solid var(--bd);padding:5px 8px;text-align:left;vertical-align:top}th{background:var(--bg2)}
-.cite{font-size:10px;line-height:0;margin:0 1px}.cite>*{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--ac);color:var(--onac);text-decoration:none;text-align:center;line-height:16px;font-weight:650}
-.cite span{background:var(--bd);color:var(--mu)}.cite a:hover{background:var(--ach)}
+.cite{font-size:10px;line-height:0;margin:0 1px}.ct .cite>*{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--ac);color:var(--onac);text-decoration:none;text-align:center;line-height:16px;font-weight:650}
+.ct .cite span{background:var(--bd);color:var(--mu)}
 .src{margin-top:10px;padding-top:8px;border-top:1px solid var(--bd);font-size:12.5px}.src p{margin:0 0 4px;font-size:11px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--mu)}
 .src ol{margin:0;padding-left:20px}.src a,.dl{color:var(--ac);text-decoration:none}.src a:hover,.dl:hover{text-decoration:underline}
 .refusal .bubble{background:none;border:1px dashed var(--bd);color:var(--mu)}.refusal .ct{font-style:italic}.dl{display:inline-block;margin-top:6px;font-size:13px}
@@ -232,7 +232,7 @@ pre{margin:0;padding:10px 12px;overflow-x:auto}pre code{white-space:pre}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 form{border-top:1px solid var(--bd);padding:10px 12px 8px}
 .box{display:flex;align-items:flex-end;gap:8px;border:1px solid var(--bd);border-radius:12px;padding:6px 6px 6px 12px;background:var(--bg2)}.box:focus-within{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac)}
-textarea{flex:1;min-width:0;border:0;background:none;resize:none;font:inherit;color:inherit;max-height:120px;padding:5px 0;outline:none}textarea::placeholder{color:var(--mu)}
+.box textarea{flex:1;min-width:0;border:0;background:none;resize:none;font:inherit;color:inherit;max-height:120px;padding:5px 0;outline:none}textarea::placeholder{color:var(--mu)}
 .send{width:34px;height:34px;flex:none;border-radius:9px}.send svg{width:18px;stroke-width:2.4}
 .meta{display:flex;justify-content:space-between;gap:10px;padding:6px 2px 0;font-size:11.5px;color:var(--mu)}.cnt{flex:none;font-variant-numeric:tabular-nums}.hi{color:var(--wa)}`;
 

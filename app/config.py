@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     cache_new_chunk_sim: float = 0.75
 
     # API
-    rate_limit: str = "20/minute;200/day"
+    rate_limit: str = "120/minute;5000/day"
     allowed_origins: str = "*"
     admin_key: str = ""
     request_timeout_seconds: float = 45.0
