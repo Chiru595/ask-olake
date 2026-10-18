@@ -1,0 +1,20 @@
+# Local run: app + Qdrant.  `cp .env.example .env`, fill keys, then `docker compose up --build`.
+# To use Qdrant Cloud instead, set QDRANT_URL / QDRANT_API_KEY in .env and run `docker compose up app`.
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.15.4
+    ports: ["6333:6333"]
+    volumes: ["qdrant_data:/qdrant/storage"]
+    restart: unless-stopped
+
+  app:
+    build: .
+    env_file: .env
+    environment:
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+    ports: ["7860:7860"]
+    depends_on: [qdrant]
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
