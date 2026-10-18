@@ -5,24 +5,24 @@
     "n_questions": 20,
     "n_answerable": 17,
     "n_must_refuse": 3,
-    "overall_pass_rate": 0.85,
+    "overall_pass_rate": 0.9,
     "contract_pass_rate": 1.0,
     "refusal_accuracy": 1.0,
     "must_refuse_pass_rate": 1.0,
-    "source_hit_rate": 0.8235294117647058,
-    "mean_facts_coverage": 0.9,
+    "source_hit_rate": 0.8823529411764706,
+    "mean_facts_coverage": 0.865686274509804,
     "false_refusals": [],
     "latency_basis": "cache-miss only",
     "latency_n": 20,
-    "latency_p50_s": 3.975131520999639,
-    "latency_p95_s": 6.3626505038495464,
+    "latency_p50_s": 4.010988166499374,
+    "latency_p95_s": 6.763926448250641,
     "top_scores_answerable": [
       0.8173,
-      0.8421,
+      0.8416,
       0.9532,
       0.9597,
-      0.9622,
-      0.9641,
+      0.9621,
+      0.964,
       0.9724,
       0.9757,
       0.9772,
@@ -32,7 +32,7 @@
       0.9821,
       0.9821,
       0.9866,
-      0.987,
+      0.9869,
       0.987
     ],
     "top_scores_must_refuse": [
@@ -61,17 +61,18 @@
         "s3"
       ],
       "status": 200,
-      "latency_s": 5.347385625002062,
+      "latency_s": 5.507578582997667,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9757",
       "x_top_score": 0.9757,
       "response": {
-        "answer": "OLake can ingest data from the following sources:\n\n*   **Transactional Databases:** PostgreSQL, MySQL, MongoDB, Oracle, MSSQL, and DB2 [1][2][3][4].\n*   **Event-Streaming Systems:** Apache Kafka [1][2][3][4].\n*   **Object Storage:** S3 (including S3-compatible stores like MinIO) [1][2][3][4].",
+        "answer": "OLake can ingest data from the following sources:\n\n*   **Transactional Databases:** PostgreSQL, MySQL, MongoDB, Oracle, MSSQL (SQL Server), and DB2 [1][2][3][4][5].\n*   **Event-Streaming Systems:** Apache Kafka [1][2][3][4][5].\n*   **Object Storage:** S3 (including S3-compatible stores like MinIO) [1][2][3][4][5].",
         "sources": [
           "https://olake.io/docs/#supported-sources",
           "https://github.com/datazip-inc/olake/blob/master/README.md#-supported-sources-and-destinations",
           "https://github.com/datazip-inc/olake/blob/master/README.md#olake-go--super-fast-sync-to-apache-iceberg",
-          "https://olake.io/blog/olake-architecture-deep-dive/#the-sources"
+          "https://olake.io/blog/olake-architecture-deep-dive/#the-sources",
+          "https://olake.io/blog/postgres-iceberg-doris-lakehouse-olake/#about-olake-go"
         ]
       },
       "contract_pass": true,
@@ -111,16 +112,17 @@
         "s3"
       ],
       "status": 200,
-      "latency_s": 5.553279290998034,
+      "latency_s": 5.812660208001034,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9780",
       "x_top_score": 0.978,
       "response": {
-        "answer": "OLake writes data to open lakehouse storage in the following formats and locations:\n\n*   **Parquet files** on object storage such as Amazon S3, MinIO, and Google Cloud Storage [1][2].\n*   **Apache Iceberg** tables with support for multiple catalog integrations including AWS Glue Data Catalog, Apache Hive Metastore, REST catalogs (Nessie, Polaris, Unity Catalog), and JDBC catalogs [1][2].\n\nIn local development environments, OLake Go writes Parquet files directly to a local directory (MinIO) or local machine path [2][3].",
+        "answer": "OLake can write data to the following destinations:\n\n*   **Parquet files** on object storage such as Amazon S3, MinIO, and Google Cloud Storage [1][2][3].\n*   **Apache Iceberg** tables with support for multiple catalog integrations including AWS Glue Data Catalog, Apache Hive Metastore, REST catalogs (Nessie, Polaris, Unity Catalog), and JDBC catalogs [1][2][4].\n\nIn local mode, the bucket is MinIO (an S3-compatible object storage running locally), and in real deployments it can use Amazon S3 or any S3-compatible storage [2].",
         "sources": [
           "https://olake.io/docs/#destinations",
           "https://olake.io/docs/community/setting-up-a-dev-env/#2-olake-cli-setup",
-          "https://olake.io/docs/writers/parquet/local/"
+          "https://olake.io/docs/release/ingestion/v0.1.0-v0.1.1/#sources",
+          "https://github.com/datazip-inc/olake/blob/master/destination/iceberg/README.md#iceberg-writer"
         ]
       },
       "contract_pass": true,
@@ -154,17 +156,16 @@
         "cdc only"
       ],
       "status": 200,
-      "latency_s": 6.061638500003028,
+      "latency_s": 6.976240166997741,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9870",
       "x_top_score": 0.987,
       "response": {
-        "answer": "OLake supports the following sync modes:\n\n*   **Full Refresh:** Reads the entire stream every run, clearing the stream's state and dropping its data at the destination [1][2].\n*   **Full Refresh + Incremental:** Performs a full load once, then on subsequent runs reads only rows where the cursor column value is greater than the last saved value [1][3][2].\n*   **Full Refresh + CDC:** Performs a full load once, then tails the database's change log to stream inserts, updates, and deletes continuously [1][2].\n*   **CDC Only:** Skips the full load entirely and starts reading the change log from the current position [1][2].\n*   **Strict CDC:** Skips the full load entirely and starts reading the change log from the current position [4][2].",
+        "answer": "OLake supports the following sync modes [1][2]:\n\n*   **Full Refresh:** Reads the entire stream every run, clearing the stream's state and dropping its data at the destination [1][2].\n*   **Incremental:** Performs a full load once, then on every later run reads only rows whose cursor column value moved past the last saved value [1][2].\n*   **CDC (Change Data Capture):** Performs a full load once, then tails the database's change log so inserts, updates, and deletes flow continuously with their exact operation type [1][2].\n*   **Strict CDC:** Skips the full load entirely and starts reading the change log from the current position [2].\n\nOLake Go supports these sync modes across various sources, including PostgreSQL, MySQL, MongoDB, Oracle, Kafka, DB2, MSSQL, and S3 [3].",
         "sources": [
           "https://olake.io/docs/understanding/terminologies/olake/#2-sync-modes",
           "https://olake.io/blog/olake-architecture-deep-dive/#sync-modes",
-          "https://olake.io/docs/community/setting-up-a-dev-env/#sync-command",
-          "https://github.com/datazip-inc/olake/blob/master/drivers/mysql/README.md#supported-modes"
+          "https://olake.io/docs/#supported-sources"
         ]
       },
       "contract_pass": true,
@@ -177,10 +178,9 @@
       "facts_found": [
         "full refresh",
         "cdc",
-        "incremental",
-        "cdc only"
+        "incremental"
       ],
-      "facts_hit": 1.0,
+      "facts_hit": 0.75,
       "not_refused": true,
       "pass": true
     },
@@ -199,17 +199,17 @@
         "deletes"
       ],
       "status": 200,
-      "latency_s": 3.9255090840015328,
+      "latency_s": 3.927265124999394,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9724",
       "x_top_score": 0.9724,
       "response": {
-        "answer": "Incremental sync is a replication method that loads only new or updated records from the source since the last successful run, using a tracking column (cursor key) such as a timestamp or an incrementing ID [1][2]. It works by tracking the highest cursor value processed previously; on the next run, OLake fetches only rows where the cursor value is greater than the saved checkpoint and appends them to the destination [2][3]. The first run typically performs a full refresh automatically, and subsequent runs use a `state.json` file containing resume tokens to determine where to resume [4][3]. It is configured by adding `\"sync_mode\": \"incremental\"` to `streams.json` and using the sync command [4].",
+        "answer": "Incremental sync is a replication method that only syncs new records based on cursor fields [1][2]. It works by tracking the maximum value of a cursor field (like `id`, `created_at`, or `updated_at`) from the previous sync and fetching only records where the cursor value is greater than that maximum [1][3][2]. The first run performs a full refresh automatically, and subsequent runs only process new or updated rows [1][3][2]. This approach avoids reloading the full dataset and is useful when CDC is not available or overkill [4].",
         "sources": [
-          "https://olake.io/docs/understanding/terminologies/olake/#2-sync-modes",
+          "https://olake.io/docs/community/setting-up-a-dev-env/#sync-command",
           "https://olake.io/docs/understanding/terminologies/general/#40-full-refresh",
-          "https://olake.io/blog/olake-architecture-deep-dive/#incremental-sync",
-          "https://olake.io/docs/community/setting-up-a-dev-env/#sync-command"
+          "https://olake.io/docs/understanding/terminologies/olake/#2-sync-modes",
+          "https://olake.io/blog/olake-architecture-deep-dive/#incremental-sync"
         ]
       },
       "contract_pass": true,
@@ -221,10 +221,9 @@
       ],
       "facts_found": [
         "cursor",
-        "greater",
-        "state"
+        "greater"
       ],
-      "facts_hit": 0.75,
+      "facts_hit": 0.5,
       "not_refused": true,
       "pass": true
     },
@@ -243,12 +242,12 @@
         "initial_wait_time"
       ],
       "status": 200,
-      "latency_s": 4.949960291000025,
+      "latency_s": 3.8471736249994137,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9597",
       "x_top_score": 0.9597,
       "response": {
-        "answer": "No, OLake CDC is not a continuously running daemon. It runs as a job that captures recent changes, replicates them, and then stops [1]. To achieve continuous or near real-time replication, these jobs must be scheduled at frequent intervals using orchestration tools [1]. Additionally, CDC in OLake Go requires execution through the Orchestrator [2].",
+        "answer": "No, OLake CDC is not a continuously running daemon process. By default, CDC runs as a job that captures recent changes, replicates them, and then stops [1][2]. However, when combined with orchestration tools (such as Airflow), these jobs can be scheduled at frequent intervals to effectively enable continuous or near real-time replication [1].",
         "sources": [
           "https://olake.io/docs/understanding/terminologies/general/#12-real-time-replication",
           "https://olake.io/docs/connectors/mongodb/#version-prerequisites"
@@ -283,19 +282,20 @@
         "pgoutput"
       ],
       "status": 200,
-      "latency_s": 5.828846541997336,
+      "latency_s": 6.644586207999964,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9821",
       "x_top_score": 0.9821,
       "response": {
-        "answer": "To use CDC with OLake on a self-hosted PostgreSQL server, you need to configure the following prerequisites and settings [1]:\n\n*   **PostgreSQL Version:** Ensure the server runs PostgreSQL 10+ (pgoutput is built-in from version 10 onwards) [1].\n*   **Server Configuration:** Enable logical replication by setting `wal_level` to `logical` [2].\n*   **User Privileges:** Create a dedicated user with replication privileges [3][2].\n*   **Client Authentication:** Edit `pg_hba.conf` to allow replication connections from the OLake client IP range. You should add entries for both standard and SSL connections (hostssl) using md5 authentication [4][5].\n*   **Replication Slot:** Create a logical replication slot using the `pgoutput` plugin. The slot name must match the `replication_slot` parameter in your OLake configuration [1][6].\n*   **Publication:** Create a publication that includes the tables you want to replicate [2][6].\n*   **Security:** Enable TLS/SSL for secure connections and restrict network access using firewalls [1][3].",
+        "answer": "To use CDC with OLake on a self-hosted PostgreSQL server, you need to configure the following prerequisites and settings [1]:\n\n*   **PostgreSQL Version:** Ensure the server is running PostgreSQL 10 or higher, as the `pgoutput` plugin is built-in from this version [1].\n*   **Server Configuration:**\n    *   Set `wal_level` to `logical` [2].\n    *   Enable TLS/SSL for secure connections (recommended) [1][3].\n    *   Ensure sufficient disk space for WAL retention [1].\n*   **User Privileges:**\n    *   Create a dedicated user for CDC with minimal required privileges [3].\n    *   Grant the user `replication_privilege` [2].\n*   **Network Security:**\n    *   Edit `pg_hba.conf` to allow replication connections from your OLake client IP range. Use `host` for non-SSL and `hostssl` for SSL connections, applying `md5` authentication [4][5].\n    *   Restrict access using firewalls and security groups [3].\n*   **Replication Slot:**\n    *   Create a logical replication slot using the `pgoutput` plugin. The slot name must match the `replication_slot` parameter in your OLake configuration [1][6].\n*   **Publication:**\n    *   Create a publication that includes the required tables [2].\n\nOLake supports CDC for PostgreSQL [7].",
         "sources": [
           "https://olake.io/docs/connectors/postgres/setup/generic/",
           "https://olake.io/docs/connectors/postgres/#3-test-connection",
           "https://olake.io/docs/connectors/postgres/setup/generic/#security-best-practices",
           "https://olake.io/docs/connectors/postgres/wal2json_plugin/#3-configure-client-authentication",
           "https://olake.io/docs/connectors/postgres/setup/generic/#3-configure-client-authentication",
-          "https://olake.io/docs/connectors/postgres/setup/rds/#5-create-replication-slot"
+          "https://olake.io/docs/connectors/postgres/setup/rds/#5-create-replication-slot",
+          "https://olake.io/docs/#supported-sources"
         ]
       },
       "contract_pass": true,
@@ -335,19 +335,19 @@
         "replication client"
       ],
       "status": 200,
-      "latency_s": 7.47426062500017,
+      "latency_s": 6.752752042000793,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9866",
       "x_top_score": 0.9866,
       "response": {
-        "answer": "OLake requires specific MySQL settings and privileges for CDC [1][2].\n\n**Server Settings**\n*   **Binary Logging:** Must be enabled (`log_bin=ON`) with format set to `ROW` and row image set to `FULL` [1][2].\n*   **Metadata:** Binlog row metadata must be set to `FULL` [1][2].\n*   **Server ID:** A unique server-id must be set [1].\n*   **GTID (Optional):** For microsecond-precision timestamp support, `gtid_mode` must be set to `ON` (requires MySQL 8.0.1+) [1].\n\n**User Privileges**\nThe user must have the following privileges [3][1][4][5]:\n*   `REPLICATION SLAVE`\n*   `REPLICATION CLIENT`\n*   `SELECT` on the database(s) and `mysql.rds_configuration` (required for RDS/Aurora to read retention settings) [4][5].\n\n**Optional Settings**\n*   **Replica ID:** A unique replica ID must be used to connect as a replication client [3].\n*   **Read Replica Support:** If connecting to a read replica, `log_slave_updates` must be set to `ON` [6].",
+        "answer": "OLake requires specific MySQL settings and privileges for CDC [1][2][3].\n\n**Server Settings**\n*   **Binary Logging:** Must be enabled (`log_bin=ON`) with format set to `ROW` and row image set to `FULL` [1][2].\n*   **Metadata:** Binlog row metadata should be set to `FULL` [2].\n*   **Retention:** Binlog retention must be sufficient for expected sync pauses [2].\n*   **Server ID:** A unique server-id must be set [1].\n*   **GTID (Optional):** For microsecond-precision timestamp support, `enforce_gtid_consistency=ON` and `gtid_mode=ON` are required (MySQL 8.0.1+) [1].\n\n**User Privileges**\nThe user must have `REPLICATION SLAVE`, `REPLICATION CLIENT`, and `SELECT` privileges [1][2]. For RDS and Aurora, `SELECT` on `mysql.rds_configuration` is also required for the optional Test Connection validation [4][5].",
         "sources": [
           "https://olake.io/docs/connectors/mysql/#version-prerequisites",
           "https://olake.io/docs/connectors/mysql/#3-test-connection",
-          "https://olake.io/docs/connectors/mysql/setup/generic/#3-create-replication-user",
+          "https://olake.io/docs/connectors/mysql/setup/generic/",
           "https://olake.io/docs/connectors/mysql/setup/rds/#configure-security-group-for-olake-access",
           "https://olake.io/docs/connectors/mysql/setup/aurora/#create-a-cdc-replication-user",
-          "https://olake.io/docs/connectors/mysql/setup/generic/"
+          "https://olake.io/docs/connectors/mysql/setup/generic/#3-create-replication-user"
         ]
       },
       "contract_pass": true,
@@ -382,16 +382,14 @@
         "oplog"
       ],
       "status": 200,
-      "latency_s": 3.9424215420003748,
+      "latency_s": 4.094711207999353,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9772",
       "x_top_score": 0.9772,
       "response": {
-        "answer": "For OLake CDC, your MongoDB deployment must meet the following requirements [1]:\n\n*   **Version:** MongoDB 4.0 or higher [1].\n*   **Replica Set:** Must be running in replica set mode (`--replSet rs0`) [1].\n*   **Oplog:** The oplog must be enabled (automatic in replica sets) [1].\n*   **Change Streams:** Change streams must be available [2][3].\n\nOLake also supports **Incremental sync** if you do not have access to enable CDC (replica sets + oplog) [1].",
+        "answer": "For OLake CDC, your MongoDB deployment must meet the following requirements [1]:\n\n*   **Version**: MongoDB 4.0 or higher [1].\n*   **Mode**: Must be running in **replica set mode** (`--replSet rs0`) [1].\n*   **Oplog**: The oplog must be enabled (automatic in replica sets) [1].\n\nOLake Go also supports **Incremental sync** if you do not have access to enable CDC (replica sets + oplog) [1].",
         "sources": [
-          "https://olake.io/docs/connectors/mongodb/#version-prerequisites",
-          "https://olake.io/docs/connectors/mongodb/#3-test-connection",
-          "https://olake.io/docs/connectors/mongodb/#3-check-source-connection"
+          "https://olake.io/docs/connectors/mongodb/#version-prerequisites"
         ]
       },
       "contract_pass": true,
@@ -425,14 +423,15 @@
         "_cdc_timestamp"
       ],
       "status": 200,
-      "latency_s": 4.007841499998904,
+      "latency_s": 5.219387583001662,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9821",
       "x_top_score": 0.9821,
       "response": {
-        "answer": "OLake Go adds the following metadata columns to every destination table: `_op_type`, `_olake_id`, `_olake_timestamp`, and `_cdc_timestamp` [1]. Additionally, for CDC records, the destination table includes a source-specific position column: `_cdc_lsn` for PostgreSQL, `_cdc_binlog_file_name` and `_cdc_binlog_file_pos` for MySQL, `_cdc_resume_token` for MongoDB, `_cdc_start_lsn` and `_cdc_seqval` for SQL Server, and `_kafka_offset` and `_kafka_partition` for Kafka [2].",
+        "answer": "OLake Go adds the following metadata columns to every destination table: `_op_type`, `_olake_id`, `_olake_timestamp`, and `_cdc_timestamp` [1][2].\n\nWhen **Enable CDC** is turned on, an additional column is added to track the source log position, which varies by source type:\n*   **PostgreSQL:** `_cdc_lsn`\n*   **MySQL:** `_cdc_binlog_file_name`, `_cdc_binlog_file_pos`\n*   **MongoDB:** `_cdc_resume_token`\n*   **SQL Server:** `_cdc_start_lsn`, `_cdc_seqval`\n*   **Kafka:** `_kafka_offset`, `_kafka_partition` [3]",
         "sources": [
           "https://olake.io/docs/understanding/terminologies/general/#4-olake-go-generated-columns",
+          "https://olake.io/blog/olake-architecture-deep-dive/#what-a-record-carries",
           "https://olake.io/blog/olake-architecture-deep-dive/#what-a-cdc-record-carries"
         ]
       },
@@ -469,12 +468,12 @@
         "kafka"
       ],
       "status": 200,
-      "latency_s": 3.060622583998338,
+      "latency_s": 3.8668591670029855,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9532",
       "x_top_score": 0.9532,
       "response": {
-        "answer": "**Upsert** ensures no duplicate records at the destination, keeping only the most recent row value for a given key [1]. It uses delete files (equality, positional, or deletion vectors) to mark previous versions as deleted [1]. **Append** adds all incoming records without deduplicating, preserving full change history as separate rows [1].\n\nThe default mode is **All Upsert**, except for **Kafka** sources which default to **Append** [1].",
+        "answer": "**Upsert** ensures no duplicate records at the destination, keeping only the most recent row value for a given key [1]. It uses delete files (equality, positional, or deletion vectors) to mark previous versions as deleted [1]. **Append** adds all incoming records without deduplicating, preserving full change history as separate rows [1].\n\n**Default:** All streams are set to `All Upsert` by default, except for **Kafka** source which defaults to **Append** mode [1].",
         "sources": [
           "https://olake.io/docs/understanding/terminologies/olake/#7-modes-to-ingest-data-upsert-vs-append"
         ]
@@ -511,17 +510,16 @@
         "rest"
       ],
       "status": 200,
-      "latency_s": 3.8638568749993283,
+      "latency_s": 3.476413791999221,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9821",
       "x_top_score": 0.9821,
       "response": {
-        "answer": "OLake Go can write to the following Iceberg catalogs:\n\n*   **AWS Glue** [1][2][3]\n*   **Hive Metastore** [1][2][3]\n*   **JDBC** [1][2][3]\n*   **REST** (including Generic, Nessie, Polaris, Unity, Lakekeeper, AWS S3 tables, BigLake, and Horizon) [1][2][3][4]",
+        "answer": "OLake Go can write to the following Iceberg catalogs:\n\n*   **AWS Glue** [1][2][3]\n*   **Hive Metastore** [1][2][3]\n*   **JDBC** [1][2][3]\n*   **REST Catalogs** [1][2][3], including:\n    *   Generic\n    *   Nessie\n    *   Polaris\n    *   Unity\n    *   Lakekeeper\n    *   AWS S3 tables\n    *   BigLake\n    *   Horizon",
         "sources": [
           "https://olake.io/docs/understanding/compatibility-catalogs/",
           "https://olake.io/docs/#destinations",
-          "https://github.com/datazip-inc/olake/blob/master/README.md#-supported-sources-and-destinations",
-          "https://olake.io/docs/writers/iceberg/catalog/rest/#configuration-1"
+          "https://github.com/datazip-inc/olake/blob/master/README.md#-supported-sources-and-destinations"
         ]
       },
       "contract_pass": true,
@@ -557,14 +555,15 @@
         "snowflake"
       ],
       "status": 200,
-      "latency_s": 5.729435666002246,
+      "latency_s": 6.112988374999986,
       "x_cache": "MISS",
       "x_top_score_raw": "0.9807",
       "x_top_score": 0.9807,
       "response": {
-        "answer": "Based on the compatibility table, the following query engines can read OLake Iceberg tables:\n\n*   **Amazon Athena** [1]\n*   **Apache Spark** (v3.3+) [1]\n*   **Apache Flink** (v1.18+) [1]\n*   **Trino** (v475 +) [1]\n*   **Starburst Enterprise** [1]\n*   **Presto** (v0.288 +) [1]\n*   **Apache Hive** (v4.2.0) [1]\n*   **Apache Impala** (v5.0) [1]\n*   **Dremio** (v25/26) [1]\n*   **DuckDB** (v1.2.1) [1]\n*   **ClickHouse** (v25.8 +) [1]\n*   **StarRocks** (v4.0 +) [1]\n*   **Apache Doris** (v3.1 +) [1]\n*   **BigQuery** (BigLake) [1]\n*   **Snowflake** (GA) [1]\n*   **Databricks** (Spark) [1]\n*   **AWS Redshift** [1]\n*   **Azure Synapse Analytics** [1]",
+        "answer": "OLake Go writes data to Apache Iceberg tables, which can be read by the following query engines [1][2]:\n\n*   **Amazon Athena** (via S3 Tables) [1]\n*   **Apache Spark** (v3.3+) [1]\n*   **Apache Flink** (v1.18+) [1]\n*   **Trino** (v475+) [1]\n*   **Starburst Enterprise** [1]\n*   **Presto** (v0.288+) [1]\n*   **Apache Hive** (v4.2.0) [1]\n*   **Apache Impala** (v5.0) [1]\n*   **Dremio** (v25/26) [1]\n*   **DuckDB** (v1.2.1) [1]\n*   **ClickHouse** (v25.8+) [1]\n*   **StarRocks** (v4.0+) [1]\n*   **Apache Doris** (v3.1+) [1]\n*   **BigQuery** (via BigLake) [1]\n*   **Snowflake** (GA) [1]\n*   **Databricks** (Spark) [1]\n*   **AWS Redshift** [1]\n*   **Azure Synapse Analytics** [1]",
         "sources": [
-          "https://olake.io/docs/understanding/compatibility-engines/"
+          "https://olake.io/docs/understanding/compatibility-engines/",
+          "https://olake.io/blog/apache-iceberg-features-benefits/#faqs"
         ]
       },
       "contract_pass": true,
@@ -602,16 +601,17 @@
         "password"
       ],
       "status": 200,
-      "latency_s": 4.587310165999952,
+      "latency_s": 4.339729040999373,
       "x_cache": "MISS",
-      "x_top_score_raw": "0.9870",
-      "x_top_score": 0.987,
+      "x_top_score_raw": "0.9869",
+      "x_top_score": 0.9869,
       "response": {
-        "answer": "To install OLake UI locally, clone the OLake UI repository and start the stack with Docker Compose:\n\n1.  **Clone the repository:**\n    ```bash\n    git clone https://github.com/datazip-inc/olake-ui.git\n    cd olake-ui\n    ```\n2.  **Start the stack:**\n    ```bash\n    docker compose up -d\n    ```\n\nThe default login details are:\n*   **Username:** `admin`\n*   **Password:** `password` [1][2][3]",
+        "answer": "To install OLake UI locally, clone the OLake UI repository and start the stack using Docker Compose:\n\n1.  **Clone the repository:**\n    ```bash\n    git clone https://github.com/datazip-inc/olake-ui.git\n    cd olake-ui\n    ```\n\n2.  **Start the stack:**\n    ```bash\n    docker compose up -d\n    ```\n\n3.  **Access the UI:**\n    Navigate to <http://localhost:8000>.\n\nThe default login credentials are:\n- **Username:** `admin`\n- **Password:** `password` [1][2][3][4]",
         "sources": [
           "https://olake.io/docs/connectors/mysql/setup/local/#3-setup-olake-ui",
           "https://olake.io/docs/connectors/postgres/setup/local/#3-setup-olake-ui",
-          "https://olake.io/docs/getting-started/olake-ui/#access-the-application"
+          "https://olake.io/docs/getting-started/olake-ui/#access-the-application",
+          "https://olake.io/docs/fusion/getting-started/quickstart/#access-the-application"
         ]
       },
       "contract_pass": true,
@@ -621,10 +621,11 @@
       "matched_sources": [],
       "facts_found": [
         "docker compose",
+        "localhost:8000",
         "admin",
         "password"
       ],
-      "facts_hit": 0.75,
+      "facts_hit": 1.0,
       "not_refused": true,
       "pass": false
     },
@@ -644,22 +645,25 @@
         "clear-destination"
       ],
       "status": 200,
-      "latency_s": 3.882589167002152,
+      "latency_s": 5.269829999997455,
       "x_cache": "MISS",
-      "x_top_score_raw": "0.9622",
-      "x_top_score": 0.9622,
+      "x_top_score_raw": "0.9621",
+      "x_top_score": 0.9621,
       "response": {
-        "answer": "The OLake CLI provides the following commands [1][2]:\n\n*   `spec`: Returns a render-able JSON Schema for a connector's configuration [1][2].\n*   `check`: Validates connection configurations for sources and destinations [1][2].\n*   `discover`: Returns all available streams (e.g., tables) and their schemas from a source [1][2].\n*   `sync`: Executes the data replication job, extracting from the source and writing to the destination [1][2].\n*   `clear-destination`: Clears data in the destination, only for the selected streams defined in `streams.json` [1].\n\nAdditionally, the CLI supports the following flags [2]:\n*   `--batch_size`: To push data into Destinations [2].\n*   `--thread_count`: Stream level concurrency i.e. how many parallel table execution [2].",
+        "answer": "The OLake CLI provides the following commands [1][2]:\n\n*   `spec`: Returns a render-able JSON Schema for a connector's configuration [1][2].\n*   `check`: Validates connection configurations for sources and destinations [1][2].\n*   `discover`: Returns all available streams (e.g., tables) and their schemas from a source [1][2].\n*   `sync`: Executes the data replication job, extracting from the source and writing to the destination [1][2].\n*   `clear-destination`: Clears data in the destination, only for the selected streams defined in `streams.json` [1].\n\nThe CLI also supports the following flags [2]:\n\n*   `--batch_size`: To push data into Destinations [2].\n*   `--thread_count`: Stream level concurrency i.e. how many parallel table execution [2].",
         "sources": [
           "https://github.com/datazip-inc/olake/blob/master/README.md#-cli-usage-advanced",
-          "https://olake.io/blog/olake-architecture/#core"
+          "https://olake.io/blog/olake-architecture/#core",
+          "https://olake.io/docs/community/commands-and-flags/#1-help"
         ]
       },
       "contract_pass": true,
       "contract_problems": [],
       "refused": false,
-      "source_hit": false,
-      "matched_sources": [],
+      "source_hit": true,
+      "matched_sources": [
+        "https://olake.io/docs/community/commands-and-flags"
+      ],
       "facts_found": [
         "spec",
         "check",
@@ -669,7 +673,7 @@
       ],
       "facts_hit": 1.0,
       "not_refused": true,
-      "pass": false
+      "pass": true
     },
     {
       "id": "tc15",
@@ -685,12 +689,12 @@
         "quartz"
       ],
       "status": 200,
-      "latency_s": 3.198011000000406,
+      "latency_s": 2.8501244580002094,
       "x_cache": "MISS",
-      "x_top_score_raw": "0.9641",
-      "x_top_score": 0.9641,
+      "x_top_score_raw": "0.9640",
+      "x_top_score": 0.964,
       "response": {
-        "answer": "Yes, you can schedule an OLake job with a custom cron expression. In the Job Configuration, you can select \"Custom\" to specify your own cron expression [1]. The system supports both 5-field and 7-field formats [1]. OLake Go does not support Quartz cron syntax [1].",
+        "answer": "Yes, you can schedule an OLake job with a custom cron expression. In the Job Configuration, you can select \"Custom\" to specify your own cron expression [1]. OLake Go supports custom frequency using cron expressions in both 5-field and 7-field formats [1].",
         "sources": [
           "https://olake.io/docs/getting-started/job-level-properties/#3-job-configuration"
         ]
@@ -704,10 +708,9 @@
       ],
       "facts_found": [
         "5-field",
-        "7-field",
-        "quartz"
+        "7-field"
       ],
-      "facts_hit": 1.0,
+      "facts_hit": 0.6666666666666666,
       "not_refused": true,
       "pass": true
     },
@@ -723,14 +726,15 @@
         "not supported"
       ],
       "status": 200,
-      "latency_s": 3.8767540410008223,
+      "latency_s": 2.8733125840008142,
       "x_cache": "MISS",
-      "x_top_score_raw": "0.8421",
-      "x_top_score": 0.8421,
+      "x_top_score_raw": "0.8416",
+      "x_top_score": 0.8416,
       "response": {
         "answer": "Cassandra is not supported by OLake. OLake supports ingestion from the following sources: PostgreSQL, MySQL, MongoDB, Oracle Database, Apache Kafka, DB2, MSSQL, and S3 [1].",
         "sources": [
-          "https://olake.io/docs/#supported-sources"
+          "https://olake.io/docs/#supported-sources",
+          "https://olake.io/blog/postgres-iceberg-doris-lakehouse-olake/#configure-olake-job"
         ]
       },
       "contract_pass": true,
@@ -761,14 +765,15 @@
         "parquet"
       ],
       "status": 200,
-      "latency_s": 3.759264542000892,
+      "latency_s": 3.7307179999988875,
       "x_cache": "MISS",
       "x_top_score_raw": "0.8173",
       "x_top_score": 0.8173,
       "response": {
-        "answer": "That is not supported by OLake. OLake Go writes data to open lakehouse storage, specifically **Parquet files** on object storage such as Amazon S3, MinIO, and Google Cloud Storage, and **Apache Iceberg** tables [1].",
+        "answer": "That is not supported by OLake. OLake Go writes data to open lakehouse storage such as Parquet files on object storage and Apache Iceberg tables [1].",
         "sources": [
-          "https://olake.io/docs/#destinations"
+          "https://olake.io/docs/#destinations",
+          "https://github.com/datazip-inc/olake-fusion/blob/master/docs/formats/overview.md#formats-overview"
         ]
       },
       "contract_pass": true,
@@ -795,7 +800,7 @@
       "expected_urls": [],
       "key_facts": [],
       "status": 200,
-      "latency_s": 6.304144707999512,
+      "latency_s": 2.4363625420010067,
       "x_cache": "MISS",
       "x_top_score_raw": "0.5560",
       "x_top_score": 0.556,
@@ -820,7 +825,7 @@
       "expected_urls": [],
       "key_facts": [],
       "status": 200,
-      "latency_s": 0.002588749997812556,
+      "latency_s": 0.00449612499869545,
       "x_cache": "MISS",
       "x_top_score_raw": null,
       "x_top_score": null,
@@ -845,7 +850,7 @@
       "expected_urls": [],
       "key_facts": [],
       "status": 200,
-      "latency_s": 1.6113836670010642,
+      "latency_s": 1.2498059999998077,
       "x_cache": "MISS",
       "x_top_score_raw": "0.1881",
       "x_top_score": 0.1881,

@@ -130,4 +130,4 @@ def test_version_reads_env(client, monkeypatch):
 def test_refusal_citing_support_list_becomes_not_supported():
     blocks = BLOCKS + [Block(3, "https://olake.io/docs/#destinations", "Overview", ["Overview", "Destinations"], "t", ["id3"], 0.0)]
     text, sources, _, refusal = postprocess(REFUSAL + " OLake writes Iceberg and Parquet [3].", blocks)
-    assert not refusal and text.startswith("That is not supported by OLake") and sources == ["https://olake.io/docs/#destinations"]
+    assert not refusal and text.startswith("That is not supported by OLake") and sources[0] == "https://olake.io/docs/#destinations"

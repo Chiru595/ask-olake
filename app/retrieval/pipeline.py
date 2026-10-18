@@ -124,6 +124,11 @@ def postprocess(raw: str, blocks: list[Block]) -> tuple[str, list[str], list[str
                 titles.append(f"{b.title} — {b.heading_path[-1]}" if len(b.heading_path) > 1 else b.title)
         if not order:
             return WEAK_RETRIEVAL, [], [], True
+    top = blocks[0] if blocks else None
+    if top and top.score > 0 and top.url not in order and top.url.startswith(ALLOWED_SOURCE_PREFIXES):
+        # always list the best-ranked section; the model sometimes cites a weaker duplicate of it
+        order.append(top.url)
+        titles.append(f"{top.title} — {top.heading_path[-1]}" if len(top.heading_path) > 1 else top.title)
     known = {b.url.split("#")[0] for b in blocks}
     known_text = " ".join(b.text for b in blocks)
 
