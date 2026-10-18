@@ -49,7 +49,8 @@ async def _run(request: Request, question: str) -> AskResult | JSONResponse:
 
 
 def _headers(res: AskResult) -> dict:
-    h = {"X-Cache": "HIT" if res.cache_hit else "MISS", "X-Refusal": str(res.refusal).lower()}
+    h = {"X-Cache": "HIT" if res.cache_hit else "MISS", "X-Refusal": str(res.refusal).lower(),
+         "X-Model": res.model or "unknown"}
     if res.top_score is not None:
         h["X-Top-Score"] = f"{res.top_score:.4f}"
     return h
@@ -72,6 +73,7 @@ async def ask_debug(request: Request, body: AskRequest):
     if isinstance(res, JSONResponse):
         return res
     return {"answer": res.answer, "sources": res.sources, "refusal": res.refusal, "cache_hit": res.cache_hit,
+            "model": res.model,
             "debug": res.debug}
 
 

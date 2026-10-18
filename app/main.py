@@ -66,7 +66,7 @@ app.state.limiter = limiter
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=S.origins, allow_methods=["GET", "POST", "OPTIONS"],
                    allow_headers=["*"], allow_credentials=False,
-                   expose_headers=["X-Request-ID", "X-Response-Time-ms", "X-Cache", "Retry-After"])
+                   expose_headers=["X-Request-ID", "X-Response-Time-ms", "X-Cache", "X-Model", "Retry-After"])
 
 
 @app.exception_handler(RateLimitExceeded)

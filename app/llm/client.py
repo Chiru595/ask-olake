@@ -87,19 +87,23 @@ class LLMClient:
         log.error("llm_failed", error=str(last)[:300])
         raise LLMUnavailable(str(last))
 
-    async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
+    async def stream(self, messages: list[dict]) -> AsyncIterator[tuple[str, str]]:
+        """Yields ("model", id) once, then ("t", delta) tokens."""
         await self.refresh_credit()
         if self.budget_exhausted():
             raise LLMUnavailable("budget exhausted")
         async with self.sem:
             try:
                 stream = await self.client.chat.completions.create(**self._body(messages, True))
-                usage = None
+                usage, model = None, None
                 async for ev in stream:
                     if getattr(ev, "usage", None):
                         usage = ev.usage
+                    if model is None and getattr(ev, "model", None):
+                        model = ev.model
+                        yield "model", model
                     if ev.choices and ev.choices[0].delta and ev.choices[0].delta.content:
-                        yield ev.choices[0].delta.content
+                        yield "t", ev.choices[0].delta.content
                 self._track(usage)
             except (APITimeoutError, RateLimitError, APIError, httpx.HTTPError) as e:
                 log.error("llm_stream_failed", error=str(e)[:300])

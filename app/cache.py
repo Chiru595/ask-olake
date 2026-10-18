@@ -25,6 +25,7 @@ class CachedAnswer:
     chunk_ids: list[str]
     embedding: list[float] | None
     is_refusal: bool
+    model: str | None = None
     created_at: float = field(default_factory=time.time)
 
 

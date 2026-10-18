@@ -221,7 +221,7 @@ pre{margin:0;padding:10px 12px;overflow-x:auto}pre code{white-space:pre}
 .tw{overflow-x:auto}table{border-collapse:collapse;font-size:13px;min-width:100%}th,td{border:1px solid var(--bd);padding:5px 8px;text-align:left;vertical-align:top}th{background:var(--bg2)}
 .cite{font-size:10px;line-height:0;margin:0 1px}.ct .cite>*{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:var(--ac);color:var(--onac);text-decoration:none;text-align:center;line-height:16px;font-weight:650}
 .ct .cite span{background:var(--bd);color:var(--mu)}
-.src{margin-top:10px;padding-top:8px;border-top:1px solid var(--bd);font-size:12.5px}.src p{margin:0 0 4px;font-size:11px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--mu)}
+.mdl{margin-top:6px;font-size:11px;color:var(--mu)}.src{margin-top:10px;padding-top:8px;border-top:1px solid var(--bd);font-size:12.5px}.src p{margin:0 0 4px;font-size:11px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--mu)}
 .src ol{margin:0;padding-left:20px}.src a,.dl{color:var(--ac);text-decoration:none}.src a:hover,.dl:hover{text-decoration:underline}
 .refusal .bubble{background:none;border:1px dashed var(--bd);color:var(--mu)}.refusal .ct{font-style:italic}.dl{display:inline-block;margin-top:6px;font-size:13px}
 .err .bubble{background:var(--erbg);color:var(--er)}.rl .bubble{background:var(--wabg);color:var(--wa)}.err p,.rl p{margin:0 0 4px}
@@ -277,7 +277,7 @@ class Bot {
       this.host._scroll(near);
     });
   }
-  final(answer, sources, refusal) {
+  final(answer, sources, refusal, model) {
     const near = this.host._near();
     this.reset(refusal ? 'refusal' : '');
     this.b.appendChild(h('div', { class: 'ct' }, [renderMarkdown(answer, sources)]));
@@ -286,6 +286,7 @@ class Bot {
       const ol = h('ol', null, sources.map(s => { const u = safeUrl(s.url); return h('li', null, [u ? ext(u, [s.title]) : s.title]); }));
       this.b.appendChild(h('div', { class: 'src' }, [h('p', { text: 'Sources' }), ol]));
     }
+    if (model) this.b.appendChild(h('div', { class: 'mdl', text: 'Answered by ' + model }));
     this.host._scroll(near);
   }
   error(msg, retry) {
@@ -476,9 +477,9 @@ class AskOLakeElement extends Base {
         const r2 = await post('/ask', 'application/json');
         if (r2.status === 429) return await rate(r2);
         if (!r2.ok) throw httpErr(r2.status);
-        fin = await r2.json();
+        fin = await r2.json(); fin.model = r2.headers.get('X-Model');
       }
-      bot.final(String(fin.answer || ''), normalizeSources(fin.sources), isRefusal(fin.answer, fin.refusal));
+      bot.final(String(fin.answer || ''), normalizeSources(fin.sources), isRefusal(fin.answer, fin.refusal), fin.model);
       this._state('idle');
     } catch (e) {
       if (ctl.cleared) return;

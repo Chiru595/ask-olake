@@ -20,6 +20,8 @@ from app.retrieval.search import Hit, hybrid_search
 
 log = structlog.get_logger()
 
+NO_LLM_GATE = "none (retrieval gate, no LLM call)"
+NO_LLM_GUARD = "none (input guardrail, no LLM call)"
 ALLOWED_SOURCE_PREFIXES = ("https://olake.io/", "https://github.com/datazip-inc/")
 INJECTION = re.compile(
     r"(ignore|disregard|forget)\s+(all\s+|any\s+|the\s+|your\s+|previous\s+|prior\s+|above\s+)*(instructions|rules|prompt)"
@@ -56,6 +58,7 @@ class AskResult:
     refusal: bool = False
     cache_hit: bool = False
     top_score: float | None = None
+    model: str | None = None
     debug: dict = field(default_factory=dict)
 
 
@@ -181,25 +184,25 @@ class Pipeline:
     def _store(self, key: str, res: AskResult, blocks: list[Block], emb: list[float] | None) -> None:
         self.cache.put(key, CachedAnswer(answer=res.answer, sources=res.sources, titles=res.titles,
                                          chunk_ids=[c for b in blocks for c in b.chunk_ids], embedding=emb,
-                                         is_refusal=res.refusal))
+                                         is_refusal=res.refusal, model=res.model))
 
     async def ask(self, question: str) -> AskResult:
         t0 = time.perf_counter()
         q, key, hit = await self._prepare(question)
         if hit:
-            return AskResult(hit.answer, hit.sources, hit.titles, hit.is_refusal, cache_hit=True)
+            return AskResult(hit.answer, hit.sources, hit.titles, hit.is_refusal, cache_hit=True, model=hit.model)
         if INJECTION.search(q):
-            return AskResult(OUT_OF_SCOPE, [], refusal=True, debug={"guard": "injection"})
+            return AskResult(OUT_OF_SCOPE, [], refusal=True, model=NO_LLM_GUARD, debug={"guard": "injection"})
         timings: dict = {}
         blocks, top, emb, dbg = await self.retrieve(q, timings)
         if self._gate(blocks, top):
-            res = AskResult(WEAK_RETRIEVAL, [], refusal=True, top_score=top)
+            res = AskResult(WEAK_RETRIEVAL, [], refusal=True, top_score=top, model=NO_LLM_GATE)
         else:
             t = time.perf_counter()
             raw, model = await self.llm.complete(self._messages(q, blocks))
             timings["llm_ms"] = round((time.perf_counter() - t) * 1000)
             answer, sources, titles, refusal = postprocess(raw, blocks)
-            res = AskResult(answer, sources, titles, refusal, top_score=top)
+            res = AskResult(answer, sources, titles, refusal, top_score=top, model=model)
             dbg["llm_model"] = model
         timings["total_ms"] = round((time.perf_counter() - t0) * 1000)
         res.debug = {**dbg, "timings": timings, "top_score": top, "blocks": [
@@ -212,28 +215,34 @@ class Pipeline:
         q, key, hit = await self._prepare(question)
         if hit:
             yield "token", {"t": hit.answer}
-            yield "final", self._final(hit.answer, hit.sources, hit.titles, hit.is_refusal, cache=True)
+            yield "final", self._final(hit.answer, hit.sources, hit.titles, hit.is_refusal, hit.model, cache=True)
             return
         if INJECTION.search(q):
-            yield "final", self._final(OUT_OF_SCOPE, [], [], True)
+            yield "final", self._final(OUT_OF_SCOPE, [], [], True, NO_LLM_GUARD)
             return
         blocks, top, emb, _ = await self.retrieve(q, {})
         if self._gate(blocks, top):
-            res = AskResult(WEAK_RETRIEVAL, [], refusal=True, top_score=top)
+            res = AskResult(WEAK_RETRIEVAL, [], refusal=True, top_score=top, model=NO_LLM_GATE)
         else:
             parts: list[str] = []
-            async for tok in self.llm.stream(self._messages(q, blocks)):
-                parts.append(tok)
-                yield "token", {"t": tok}
+            model = None
+            async for kind, val in self.llm.stream(self._messages(q, blocks)):
+                if kind == "model":
+                    model = val
+                    yield "model", {"model": val}
+                    continue
+                parts.append(val)
+                yield "token", {"t": val}
             answer, sources, titles, refusal = postprocess("".join(parts), blocks)
-            res = AskResult(answer, sources, titles, refusal, top_score=top)
+            res = AskResult(answer, sources, titles, refusal, top_score=top, model=model)
         self._store(key, res, blocks, emb)
-        yield "final", self._final(res.answer, res.sources, res.titles, res.refusal)
+        yield "final", self._final(res.answer, res.sources, res.titles, res.refusal, res.model)
 
     @staticmethod
-    def _final(answer: str, sources: list[str], titles: list[str], refusal: bool, cache: bool = False) -> dict:
+    def _final(answer: str, sources: list[str], titles: list[str], refusal: bool, model: str | None,
+               cache: bool = False) -> dict:
         titles = titles or [urlparse(u).path.strip("/").split("/")[-1] or u for u in sources]
-        return {"answer": answer, "refusal": refusal, "cache": cache,
+        return {"answer": answer, "refusal": refusal, "cache": cache, "model": model,
                 "sources": [{"url": u, "title": t} for u, t in zip(sources, titles)]}
 
 
