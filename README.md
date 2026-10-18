@@ -13,7 +13,7 @@ A production-grade RAG assistant for the [OLake](https://olake.io/docs/) docs. I
 ## Quick start
 
 ```bash
-curl -s -X POST https://<your-host>/ask \
+curl -s -X POST https://ask-olake-sooty.vercel.app/ask \
   -H 'Content-Type: application/json' \
   -d '{"question": "What do I need to set up Postgres CDC?"}'
 ```
@@ -169,7 +169,14 @@ python eval/run_eval.py --base-url https://<your-host> --file eval/olake_testcas
 
 The runner checks the exact contract shape, refusal behaviour, page-level source hits, key-fact coverage and p50/p95 latency, and prints rerank top scores to help tune `REFUSAL_THRESHOLD`.
 
-Latest local runs (development machine in India; the services are in US East):
+Live deployment (`https://ask-olake-sooty.vercel.app`, DeepSeek V4.1 Flash primary):
+
+| Set | Pass | Contract | Refusals correct | Source hit | Key facts | p50 / p95 latency |
+| --- | --- | --- | --- | --- | --- | --- |
+| Official 20 | 95% | 100% | 100% | 94% | 98% | 2.5 s / 5.5 s |
+| Own 30 | 97% | 100% | 100% | 96% | 99% | 2.6 s / 5.0 s |
+
+Earlier local runs (development machine in India; the services are in US East), comparing primary models:
 
 | Set | Primary model | Pass | Contract | Refusals correct | Source hit | Key facts | p50 / p95 latency |
 | --- | --- | --- | --- | --- | --- | --- | --- |
