@@ -20,12 +20,13 @@ class ReindexRequest(BaseModel):
 @router.post("/reindex", dependencies=[Depends(require_admin)])
 async def reindex(request: Request, body: ReindexRequest):
     poller = (await get_state(request.app)).poller
-    if poller.lock.locked():
-        return {"status": "busy", "message": "a sync cycle is already running"}
     if get_settings().is_serverless:
         if body.scope == "full":
             return JSONResponse({"status": "error", "message": "full re-index is not run serverless; "
                                  "run scripts/full_index.py locally"}, status_code=400)
-        return {"status": "done", "scope": body.scope, **await poller.run_cycle(full=False)}
+        # the request keeps the function alive, so the cycle actually completes (background work may be frozen)
+        return {"status": "done", "scope": body.scope, **await poller.run_inline(timeout=120)}
+    if poller.lock.locked():
+        return {"status": "busy", "message": "a sync cycle is already running"}
     asyncio.create_task(poller.run_cycle(full=body.scope == "full"))
     return {"status": "started", "scope": body.scope}

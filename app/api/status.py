@@ -1,4 +1,6 @@
 """/status (freshness proof) and /health (liveness + readiness)."""
+import asyncio
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -11,7 +13,12 @@ S = get_settings()
 
 @router.get("/status")
 async def status(request: Request):
-    st = await get_state(request.app, sync=True)
+    st = await get_state(request.app)
+    if S.is_serverless and st.poller.ready:
+        # finish a due sync before reporting, so /status shows live freshness even without a cron
+        task = st.poller.maybe_sync()
+        if task:
+            await asyncio.wait({task}, timeout=15)
     info = st.poller.info
     try:
         total = await st.indexer.count()

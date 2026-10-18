@@ -75,14 +75,26 @@ class Poller:
         await self.load_status()
         self.ready = await self.ix.count() > 0
 
-    def maybe_sync(self) -> None:
-        """Serverless freshness: kick off an incremental cycle when the last one is older than the poll interval."""
-        if self.lock.locked() or (self._lazy_task and not self._lazy_task.done()):
-            return
-        if time.time() - self._last_cycle_wall < self.s.poll_interval_seconds:
-            return
+    def maybe_sync(self) -> asyncio.Task | None:
+        """Serverless freshness: kick off an incremental cycle when the last one is older than the poll interval.
+        Returns the running task so a caller can keep the instance busy until it finishes."""
+        if self._lazy_task and not self._lazy_task.done():
+            return self._lazy_task
+        if self.lock.locked() or time.time() - self._last_cycle_wall < self.s.poll_interval_seconds:
+            return None
         self._last_cycle_wall = time.time()
         self._lazy_task = asyncio.create_task(self._safe("lazy_sync", self.run_cycle(full=False)))
+        return self._lazy_task
+
+    async def run_inline(self, timeout: float) -> dict:
+        """Wait for any in-flight cycle (it may have been frozen with its instance), then run one now."""
+        deadline = time.monotonic() + timeout
+        while self.lock.locked() and time.monotonic() < deadline:
+            await asyncio.sleep(0.25)
+        if self.lock.locked():
+            return {"skipped": True, "reason": "previous cycle still running"}
+        self._last_cycle_wall = time.time()
+        return await self.run_cycle(full=False)
 
     async def stop(self) -> None:
         if self._task:
