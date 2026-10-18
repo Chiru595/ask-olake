@@ -3,10 +3,12 @@
 A production-grade RAG assistant for the [OLake](https://olake.io/docs/) docs. It answers questions about OLake ingestion and OLake Fusion with exact source links, says plainly when the docs don't cover something, and keeps itself fresh by re-indexing changed content every 60 seconds.
 
 - **Endpoint:** `POST /ask` → `{"answer": "...", "sources": ["<url>", ...]}`
-- **Demo page with the embedded widget:** `/`
+- **Demo page with the embedded widget:** `/demo` (also `/`)
 - **Freshness and index stats:** `/status`
+- **Live commit and deployment:** `/version` → `{"commit": "<VERCEL_GIT_COMMIT_SHA>", "deployment": "<VERCEL_DEPLOYMENT_ID>"}`
+- **OpenRouter models this key can use:** `/models` (fetched live from OpenRouter's `/models/user`)
 - **Interactive API docs:** `/docs`
-- **MCP server (admin key):** `/mcp`
+- **MCP server (admin key, container/local mode):** `/mcp`
 
 ## Quick start
 
@@ -58,7 +60,7 @@ flowchart LR
     H --> QD
     H --> RR[Cohere Rerank v4 Pro<br/>Fast fallback] --> GATE{Score ≥ threshold?}
     GATE -- no --> REF[Refusal, sources = []]
-    GATE -- yes --> LLM[OpenRouter LLM<br/>DeepSeek V4.1 Flash + fallbacks] --> PP[Citation mapping<br/>link and leak checks] --> A[answer + sources]
+    GATE -- yes --> LLM[OpenRouter LLM<br/>GLM 4.7 Flash → Gemini 2.5 Flash Lite → DeepSeek V4.1 Flash] --> PP[Citation mapping<br/>link and leak checks] --> A[answer + sources]
   end
 ```
 
@@ -74,10 +76,11 @@ flowchart LR
 | **Soft filter boost** | If the question names a connector or product, an extra filtered prefetch joins the fusion. It never hard-filters, so general pages still match. |
 | **Honesty gate + grounded prompt** | If the top rerank score is below `REFUSAL_THRESHOLD`, no LLM call is made. Otherwise the LLM must cite every fact. Answers with no valid citation become refusals, and `sources` is only the cited blocks, in first-cited order. |
 | **"Not supported" vs "couldn't find"** | The docs-home "Supported Sources" and "Destinations" sections are always in context, so "Can OLake write to Delta Lake?" gets a cited "not supported, here is what is". Facts missing from the docs (SLAs, pricing) get "I couldn't find this in the OLake documentation" and a pointer to the community Slack. |
-| **LLM: OpenRouter, DeepSeek V4.1 Flash, with Gemini 2.5 Flash Lite and GLM 4.7 Flash as server-side fallbacks** | In our test DeepSeek was fastest (~0.65 s) and most complete. Reasoning is off, temperature is 0.1 and answers are capped at 600 tokens. A credit guard switches to the cheapest model under $1 left and stops LLM calls under $0.10. |
+| **LLM: OpenRouter, GLM 4.7 Flash first, then Gemini 2.5 Flash Lite and DeepSeek V4.1 Flash as server-side fallbacks** | This is the organisers' required priority order, sent as OpenRouter's `models` fallback list so a failing model falls through in one request. Reasoning is off, temperature is 0.1 and answers are capped at 600 tokens. The model that answered is returned in `X-Model` and shown in the widget. A credit guard switches to the cheapest model under $1 left and stops LLM calls under $0.10. |
 | **Docs over blog** | Blog posts are indexed (graders cite them) but get a small rank penalty and at most 2 blocks per answer, since they can be older than the docs. |
 | **olake-fusion repo filtered** | Fusion is a fork of Apache Amoro. Upstream docs for features Fusion doesn't ship (Flink, Paimon, mixed-Hive, Kyuubi) are excluded so the bot can't confidently describe them. |
-| **One process, one worker** | The poller and the in-memory cache must share state, and multiple workers would duplicate polling. |
+| **Two run modes, one codebase** | In a container (Docker Compose) one worker runs the background poller and holds the cache. On Vercel (serverless, detected from the `VERCEL` env var) clients are built lazily on the first request, the index is prebuilt in Qdrant Cloud, and freshness comes from on-request lazy syncs plus a cron calling `/reindex`. |
+| **Small serverless bundle** | No torch or local embedding models: embeddings and rerank are API calls, and BM25 runs through FastEmbed's ONNX runtime. The BM25 model and the tiktoken encoding are committed under `models/` (1.8 MB), so cold starts never download anything. |
 
 ## Freshness
 
@@ -85,6 +88,7 @@ flowchart LR
 - **Repos:** `GET /commits/{branch}` with an ETag (304 when unchanged). On a new SHA, the compare API lists changed files; added and modified files are fetched raw at that SHA and re-chunked, removed and renamed files are deleted. A failed compare, or one with 300+ files, falls back to a fresh shallow clone plus a chunk-hash diff.
 - **Cache:** answers are cached for an hour, keyed by the normalised question. A sync evicts only the answers that used a changed or deleted chunk, answers whose question embedding is ≥ 0.75 cosine-similar to a new chunk, and all cached refusals (new content may now answer them). A sync with no changes evicts nothing.
 - **State:** poller state (SHAs, ETags, per-page hashes) lives in a small Qdrant collection, so a restart resumes where it left off. Changing the embedding model forces a full re-index.
+- **On Vercel (serverless):** there is no always-on process, so freshness comes from two places. When `/ask`, `/ask/stream` or `/status` is hit and the last cycle is older than `POLL_INTERVAL_SECONDS`, an incremental cycle starts in the background. A GitHub Actions cron (`.github/workflows/sync.yml`, every 5 minutes) also calls `POST /reindex` with `{"scope": "incremental"}`, which runs the cycle inline (typically about 1 s when nothing changed). Full re-indexes run locally with `python -m scripts.full_index`.
 - **Check it:** `/status` shows `last_poll`, `last_change_detected`, the indexed SHA, chunk and page counts per source, cache stats and the LLM credit left. `POST /reindex` (with an `X-Admin-Key` header) accepts `{"scope": "incremental" | "full"}`.
 
 ## Production readiness and guardrails
@@ -97,7 +101,7 @@ flowchart LR
   - Off-topic requests (poems, trivia) are politely redirected to OLake.
 - **Limits:** `slowapi` per-IP limits (default 120/minute, 5000/day, client IP from `X-Forwarded-For`) return 429 with `Retry-After` and the contract body. At most 8 concurrent LLM calls. Bulk embedding stays under the provider's tokens-per-minute budget.
 - **Timeouts and fallbacks:**
-  - Embedding 20 s, rerank 8 s, Qdrant 10 s, LLM 30 s, whole request 45 s.
+  - Embedding 20 s (bulk) with at most 2 tries per query, rerank 8 s, Qdrant 10 s, LLM 20 s with at most 1 retry, whole request 25 s (graders score answers within 30 s).
   - Retries use exponential backoff with jitter and respect `Retry-After`.
   - If rerank fails, RRF order is used. If the LLM fails, other models are tried, then the endpoint returns 503.
   - A failing source never stops the others from syncing.
@@ -115,7 +119,7 @@ python eval/run_eval.py --base-url https://<your-host> --file eval/olake_testcas
 
 The runner checks the exact contract shape, refusal behaviour, page-level source hits, key-fact coverage and p50/p95 latency, and prints rerank top scores to help tune `REFUSAL_THRESHOLD`.
 
-Latest local run (development machine in India; the services are in US East):
+Latest local run (development machine in India; the services are in US East; measured with DeepSeek V4.1 Flash as the primary model, before the organisers fixed the GLM-first order):
 
 | Set | Pass | Contract | Refusals correct | Source hit | Key facts | p50 / p95 latency |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -137,7 +141,14 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 
 The first start runs a full index (about 5 minutes, throttled to the embedding provider's rate limit). After that the poller keeps the index fresh.
 
-**Deploy (Railway):** `railway.json` builds the Dockerfile, runs one replica and health-checks `/health`. Paste the `.env` contents into Railway Variables (Raw Editor), pick the region closest to your Qdrant cluster, and generate a domain. The same image runs on Hugging Face Spaces or any Docker host; it listens on `$PORT`.
+**Deploy (Vercel, from GitHub):**
+1. Build the index once locally: `python -m scripts.full_index`. It goes into Qdrant Cloud, which the deployment reads.
+2. Import the GitHub repo in Vercel (Add New → Project). `index.py` exposes the FastAPI `app`, so Vercel detects it with no extra config.
+3. Add the variables from `.env.example` under Settings → Environment Variables, and tick **Enable access to System Environment Variables** so `/version` gets `VERCEL_GIT_COMMIT_SHA` and `VERCEL_DEPLOYMENT_ID`.
+4. Every push to `main` redeploys.
+5. For the sync cron, add the repo secrets `ASK_OLAKE_URL` (your Vercel URL) and `ADMIN_KEY`.
+
+The Dockerfile still runs anywhere Docker does (it listens on `$PORT`).
 
 ## Configuration
 
@@ -145,7 +156,7 @@ Everything is set through environment variables (`app/config.py`); see `.env.exa
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OPENROUTER_API_KEY`, `LLM_MODEL`, `LLM_FALLBACK_MODELS` | DeepSeek V4.1 Flash, then Gemini 2.5 Flash Lite and GLM 4.7 Flash | LLM and fallbacks |
+| `OPENROUTER_API_KEY`, `LLM_MODEL`, `LLM_FALLBACK_MODELS` | GLM 4.7 Flash, then Gemini 2.5 Flash Lite and DeepSeek V4.1 Flash | LLM and fallbacks |
 | `EMBED_ENDPOINT`, `EMBED_API_KEY`, `EMBED_MODEL`, `EMBED_DIM` | Cohere-Embed-V5-Pro, 1024 | Dense embeddings |
 | `RERANK_*`, `RERANK_FALLBACK_*` | Cohere-rerank-v4.0-pro / fast | Reranking |
 | `QDRANT_URL`, `QDRANT_API_KEY` | — | Vector DB |

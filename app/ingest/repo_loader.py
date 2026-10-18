@@ -1,6 +1,7 @@
 """GitHub repos: shallow clone, include/exclude rules, file -> chunks, commit/compare API, raw fetch."""
 import asyncio
 import re
+import shutil
 from pathlib import Path
 
 import httpx
@@ -169,6 +170,8 @@ async def run(cmd: list[str], cwd: str | None = None) -> str:
 
 async def clone_repo(repo: str, s: Settings) -> tuple[Path, str, str]:
     """Fresh shallow clone. Returns (dir, branch, sha). Blobs over 1 MB are skipped to keep clones small."""
+    if shutil.which("git") is None:  # e.g. serverless runtimes; caller keeps the previous state
+        raise RuntimeError("git is not available for a full repo resync")
     root = Path(s.workdir) / "repos"
     root.mkdir(parents=True, exist_ok=True)
     dest = root / repo

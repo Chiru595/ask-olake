@@ -1,0 +1,10 @@
+.venv
+.env
+tests
+eval/results*.json
+Dockerfile
+docker-compose.yml
+.dockerignore
+.github
+__pycache__
+*.pyc

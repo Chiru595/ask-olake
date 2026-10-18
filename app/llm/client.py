@@ -73,7 +73,8 @@ class LLMClient:
             raise LLMUnavailable("budget exhausted")
         last: Exception | None = None
         async with self.sem:
-            for attempt in range(3):
+            # one retry at most: OpenRouter already falls back across models server-side and graders allow 30 s
+            for attempt in range(2):
                 try:
                     resp = await self.client.chat.completions.create(**self._body(messages, False))
                     self._track(resp.usage)

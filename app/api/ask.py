@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from app.config import get_settings
 from app.llm.client import LLMUnavailable
 from app.retrieval.pipeline import AskResult, InvalidQuestion
+from app.runtime import get_state
 from app.security import limiter, require_admin
 
 router = APIRouter()
@@ -31,7 +32,7 @@ def contract(answer: str, sources: list[str], status: int = 200, headers: dict |
 
 
 async def _run(request: Request, question: str) -> AskResult | JSONResponse:
-    state = request.app.state
+    state = await get_state(request.app, sync=True)
     if not state.poller.ready:
         return contract(NOT_READY, [], 503, {"Retry-After": "30"})
     try:
@@ -84,7 +85,7 @@ def _sse(event: str, data: dict) -> str:
 @router.post("/ask/stream")
 @limiter.limit(S.rate_limit)
 async def ask_stream(request: Request, body: AskRequest):
-    state = request.app.state
+    state = await get_state(request.app, sync=True)
 
     async def gen():
         if not state.poller.ready:

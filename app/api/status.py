@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
+from app.runtime import get_state
 
 router = APIRouter()
 S = get_settings()
@@ -10,7 +11,7 @@ S = get_settings()
 
 @router.get("/status")
 async def status(request: Request):
-    st = request.app.state
+    st = await get_state(request.app, sync=True)
     info = st.poller.info
     try:
         total = await st.indexer.count()
@@ -22,6 +23,7 @@ async def status(request: Request):
         "last_change_detected": info["last_change_detected"],
         "last_cycle_seconds": info["last_cycle_seconds"],
         "poll_interval_seconds": S.poll_interval_seconds,
+        "sync_mode": "lazy (on request) + external cron /reindex" if S.is_serverless else "background poller",
         "total_chunks": total,
         "sources": info["sources"],
         "last_error": info["last_error"],
@@ -38,7 +40,7 @@ async def status(request: Request):
 
 @router.get("/health")
 async def health(request: Request):
-    st = request.app.state
+    st = await get_state(request.app)
     try:
         n = await st.indexer.count()
     except Exception as e:  # noqa: BLE001

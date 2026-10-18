@@ -49,6 +49,8 @@ class Poller:
         self.info: dict = {"last_poll": None, "last_change_detected": None, "last_cycle_seconds": None,
                            "last_error": None, "evicted_last_sync": 0, "sources": {}}
         self._task: asyncio.Task | None = None
+        self._lazy_task: asyncio.Task | None = None
+        self._last_cycle_wall = 0.0
 
     # ---------- lifecycle ----------
     async def start(self) -> None:
@@ -67,6 +69,20 @@ class Poller:
             await self.load_status()
         self.ready = await self.ix.count() > 0
         self._task = asyncio.create_task(self._loop())
+
+    async def start_serverless(self) -> None:
+        """Serverless: the index is prebuilt in Qdrant; never full-index or loop, just load state."""
+        await self.load_status()
+        self.ready = await self.ix.count() > 0
+
+    def maybe_sync(self) -> None:
+        """Serverless freshness: kick off an incremental cycle when the last one is older than the poll interval."""
+        if self.lock.locked() or (self._lazy_task and not self._lazy_task.done()):
+            return
+        if time.time() - self._last_cycle_wall < self.s.poll_interval_seconds:
+            return
+        self._last_cycle_wall = time.time()
+        self._lazy_task = asyncio.create_task(self._safe("lazy_sync", self.run_cycle(full=False)))
 
     async def stop(self) -> None:
         if self._task:
@@ -88,6 +104,12 @@ class Poller:
 
     async def load_status(self) -> None:
         docs = await self.state.get("docs")
+        if docs.get("last_checked"):
+            self.info["last_poll"] = self.info["last_poll"] or docs["last_checked"]
+            try:
+                self._last_cycle_wall = max(self._last_cycle_wall, datetime.fromisoformat(docs["last_checked"]).timestamp())
+            except ValueError:
+                pass
         self.info["sources"]["docs"] = {k: docs.get(k) for k in ("pages", "chunks", "last_checked", "last_changed")}
         for repo in self.s.repo_list:
             st = await self.state.get(f"repo:{repo}")
@@ -112,6 +134,7 @@ class Poller:
                 evicted = self.cache.clear()
             elif result.any:
                 evicted = self.cache.invalidate(result.changed, result.deleted, result.dense)
+            self._last_cycle_wall = time.time()
             self.info.update(last_poll=now(), last_cycle_seconds=round(time.monotonic() - t0, 2), evicted_last_sync=evicted)
             if result.any:
                 self.info["last_change_detected"] = now()

@@ -1,6 +1,9 @@
 """Dense embeddings (Cohere on Azure, native v2 API) and local BM25 sparse embeddings."""
 import asyncio
+import os
 import random
+import shutil
+import tempfile
 import time
 from collections import deque
 
@@ -10,7 +13,7 @@ import structlog
 from fastembed import SparseTextEmbedding
 from qdrant_client import models
 
-from app.config import Settings
+from app.config import MODELS_DIR, Settings
 from app.ingest.chunker import count_tokens
 
 log = structlog.get_logger()
@@ -62,7 +65,7 @@ class Embedder:
         self.budget = TokenBudget(s.embed_tokens_per_minute)
         self.bulk = asyncio.Semaphore(2)
 
-    async def _embed_batch(self, texts: list[str], input_type: str) -> list[list[float]]:
+    async def _embed_batch(self, texts: list[str], input_type: str, attempts: int = 6) -> list[list[float]]:
         async def call():
             r = await self.c.post(
                 self.s.embed_endpoint,
@@ -74,7 +77,7 @@ class Embedder:
             r.raise_for_status()
             return r.json()["embeddings"]["float"]
 
-        vecs = np.asarray(await with_retries(call, attempts=6, what="embed"), dtype=np.float32)
+        vecs = np.asarray(await with_retries(call, attempts=attempts, what="embed"), dtype=np.float32)
         vecs /= np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12
         return vecs.tolist()
 
@@ -96,12 +99,30 @@ class Embedder:
         return out
 
     async def embed_query(self, text: str) -> list[float]:
-        return (await self._embed_batch([text], "search_query"))[0]
+        return (await self._embed_batch([text], "search_query", attempts=2))[0]
+
+
+def _bm25_cache_dir() -> str | None:
+    """Prefer the BM25 files bundled in the repo; copy them to a writable dir since fastembed may write locks."""
+    env = os.getenv("FASTEMBED_CACHE_PATH")
+    bundled = MODELS_DIR / "fastembed"
+    if not bundled.is_dir():
+        return env
+    target = os.path.join(tempfile.gettempdir(), "ask-olake-fastembed")
+    if not os.path.isdir(target):
+        shutil.copytree(bundled, target, dirs_exist_ok=True)
+    return target
 
 
 class SparseEmbedder:
     def __init__(self) -> None:
-        self.model = SparseTextEmbedding("Qdrant/bm25")
+        self._model: SparseTextEmbedding | None = None
+
+    @property
+    def model(self) -> SparseTextEmbedding:
+        if self._model is None:  # lazy: keeps cold start and import time small
+            self._model = SparseTextEmbedding("Qdrant/bm25", cache_dir=_bm25_cache_dir())
+        return self._model
 
     def _to_sv(self, e) -> models.SparseVector:
         return models.SparseVector(indices=e.indices.tolist(), values=e.values.tolist())

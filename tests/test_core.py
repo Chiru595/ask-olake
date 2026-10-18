@@ -92,8 +92,10 @@ def client():
     async def noop(self):
         self.ready = True
 
+    from app.sync.poller import Poller
+
     mp = pytest.MonkeyPatch()
-    mp.setattr(main.Poller, "start", noop)
+    mp.setattr(Poller, "start", noop)
     with TestClient(main.app) as c:
         main.app.state.pipeline = FakePipeline()
         main.app.state.poller.ready = True
@@ -112,3 +114,9 @@ def test_ask_contract_errors(client, body, status):
     r = client.post("/ask", json=body)
     assert r.status_code == status
     assert set(r.json()) == {"answer", "sources"} and r.json()["sources"] == []
+
+
+def test_version_reads_env(client, monkeypatch):
+    monkeypatch.setenv("VERCEL_GIT_COMMIT_SHA", "abc123")
+    monkeypatch.setenv("VERCEL_DEPLOYMENT_ID", "dpl_x")
+    assert client.get("/version").json() == {"commit": "abc123", "deployment": "dpl_x"}

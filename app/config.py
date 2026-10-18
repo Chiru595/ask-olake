@@ -1,4 +1,6 @@
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -7,17 +9,20 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
 
     app_version: str = "1.0.0"
+    # serverless (Vercel): no background poller, lazy init per instance, prebuilt index in Qdrant Cloud
+    serverless: bool = False
 
     # LLM (OpenRouter, OpenAI-compatible)
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "deepseek/deepseek-v4.1-flash"
-    llm_fallback_models: str = "google/gemini-2.5-flash-lite,z-ai/glm-4.7-flash"
+    # organiser-mandated priority: GLM 4.7 Flash, then Gemini 2.5 Flash Lite, then DeepSeek V4.1 Flash
+    llm_model: str = "z-ai/glm-4.7-flash"
+    llm_fallback_models: str = "google/gemini-2.5-flash-lite,deepseek/deepseek-v4.1-flash"
     llm_cheap_model: str = "google/gemini-2.5-flash-lite"
     llm_max_tokens: int = 600
     llm_temperature: float = 0.1
     llm_reasoning_effort: str = "none"
-    llm_timeout_seconds: float = 30.0
+    llm_timeout_seconds: float = 20.0
     llm_max_concurrency: int = 8
     llm_budget_switch_usd: float = 1.0
     llm_budget_stop_usd: float = 0.10
@@ -77,10 +82,14 @@ class Settings(BaseSettings):
     rate_limit: str = "120/minute;5000/day"
     allowed_origins: str = "*"
     admin_key: str = ""
-    request_timeout_seconds: float = 45.0
+    request_timeout_seconds: float = 25.0  # graders score answers within 30 s
     max_question_chars: int = 1000
     log_level: str = "INFO"
     mcp_enabled: bool = True
+
+    @property
+    def is_serverless(self) -> bool:
+        return self.serverless or bool(os.getenv("VERCEL"))
 
     @property
     def repo_list(self) -> list[str]:
@@ -110,6 +119,12 @@ class Settings(BaseSettings):
     @property
     def origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+
+MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+# bundled tokenizer so cold starts never download it (tiktoken names cache files by the sha1 of the source URL)
+if (MODELS_DIR / "tiktoken").is_dir():
+    os.environ.setdefault("TIKTOKEN_CACHE_DIR", str(MODELS_DIR / "tiktoken"))
 
 
 @lru_cache

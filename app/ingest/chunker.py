@@ -4,6 +4,7 @@ import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 
 import tiktoken
 
@@ -13,11 +14,13 @@ MERGE_BELOW = 80
 OVERLAP = 50
 ATOMIC_MAX = 800
 
-_enc = tiktoken.get_encoding("cl100k_base")
+@lru_cache(maxsize=1)
+def _enc() -> tiktoken.Encoding:
+    return tiktoken.get_encoding("cl100k_base")
 
 
 def count_tokens(text: str) -> int:
-    return len(_enc.encode(text, disallowed_special=()))
+    return len(_enc().encode(text, disallowed_special=()))
 
 
 @dataclass
