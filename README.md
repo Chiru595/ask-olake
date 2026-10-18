@@ -141,6 +141,10 @@ index.py             Vercel entry point;  Dockerfile / docker-compose.yml for co
 - **On Vercel (serverless):** there is no always-on process, so freshness comes from two places. When `/ask` or `/ask/stream` is hit and the last cycle is older than `POLL_INTERVAL_SECONDS`, an incremental cycle starts in the background (best effort: Vercel may freeze it after the response). `/status` waits up to 15 s for a due cycle, so it always reports live freshness. `POST /reindex` waits for any in-flight cycle and then runs one inside the request, so an external scheduler (e.g. cron-job.org every minute, or the GitHub Actions workflow in `ops/`) gives reliable 60 s freshness. A GitHub Actions cron (`ops/sync-workflow.yml`; copy it to `.github/workflows/` from the GitHub web UI, every 5 minutes) also calls `POST /reindex` with `{"scope": "incremental"}`, which runs the cycle inline (typically about 1 s when nothing changed). Full re-indexes run locally with `python -m scripts.full_index`.
 - **Check it:** `/status` shows `last_poll`, `last_change_detected`, the indexed SHA, chunk and page counts per source, cache stats and the LLM credit left. `POST /reindex` (with an `X-Admin-Key` header) accepts `{"scope": "incremental" | "full"}`.
 
+### Scheduled re-index (production)
+
+The live deployment is re-indexed by an external scheduler: a **cron-job.org job calls `POST https://ask-olake-sooty.vercel.app/reindex` every 5 minutes** (`X-Admin-Key` header, body `{"scope":"incremental"}`). Each call runs one incremental sync inside the request (about 1 s when nothing changed) and returns `{"status":"done","changed":…,"deleted":…,"evicted":…}`. Between runs, opening `/status` triggers a sync if the last one is older than 60 s, so `/status` always shows live freshness. If the scheduler or a sync fails, `/ask` keeps answering from the last good index in Qdrant Cloud.
+
 ## Production readiness and guardrails
 
 - **Input:** 1–1,000 characters, control characters stripped, unknown JSON fields ignored. Prompt-injection and "reveal your prompt" requests are refused before any LLM call.
