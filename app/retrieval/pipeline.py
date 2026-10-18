@@ -35,7 +35,7 @@ ALLOWED_SOURCE_PREFIXES = ("https://olake.io/", "https://github.com/datazip-inc/
 INJECTION = re.compile(
     r"(ignore|disregard|forget)\s+(all\s+|any\s+|the\s+|your\s+|previous\s+|prior\s+|above\s+)*(instructions|rules|prompt)"
     r"|(reveal|print|show|repeat|output)\s+(me\s+)?(your|the)\s+(system\s+)?(prompt|instructions|rules)"
-    r"|\bjailbreak\b|\bDAN mode\b|developer mode",
+    r"|\bjailbreak\b|\bDAN mode\b|developer mode|\byou are now\b|\bunrestricted\b|\bno (rules|restrictions|filters)\b",
     re.I,
 )
 CITE = re.compile(r"[\[【]\^?(?:Block\s*|Source\s*)?(\d+(?:\s*[,;]\s*\d+)*)[\]】]", re.I)
@@ -90,12 +90,13 @@ def validate(question: str, max_chars: int) -> str:
     return q
 
 
-def postprocess(raw: str, blocks: list[Block]) -> tuple[str, list[str], list[str], bool]:
+def postprocess(raw: str, blocks: list[Block], question: str = "") -> tuple[str, list[str], list[str], bool]:
     """Map [n] markers to cited sources (first-cited order), renumber, drop invented links, detect refusals."""
     text = raw.strip()
     if any(m in text for m in LEAK_MARKERS) or SECRET.search(text):
         return OUT_OF_SCOPE, [], [], True
-    if text.startswith(REFUSAL) and any(f"[{b.n}]" in text for b in blocks if b.url in PINNED_URLS):
+    if (text.startswith(REFUSAL) and "olake" in question.lower()
+            and any(f"[{b.n}]" in text for b in blocks if b.url in PINNED_URLS)):
         # "couldn't find" + citing the supported-sources/destinations lists = the thing isn't supported
         text = "That is not supported by OLake. " + text[len(REFUSAL):].lstrip()
     elif not text or text.startswith(REFUSAL):
@@ -262,7 +263,7 @@ class Pipeline:
             t = time.perf_counter()
             raw, model = await self.llm.complete(self._messages(q, blocks))
             timings["llm_ms"] = round((time.perf_counter() - t) * 1000)
-            answer, sources, titles, refusal = postprocess(raw, blocks)
+            answer, sources, titles, refusal = postprocess(raw, blocks, q)
             res = AskResult(answer, sources, titles, refusal, top_score=top, model=model)
             dbg["llm_model"] = model
         timings["total_ms"] = round((time.perf_counter() - t0) * 1000)
@@ -294,7 +295,7 @@ class Pipeline:
                     continue
                 parts.append(val)
                 yield "token", {"t": val}
-            answer, sources, titles, refusal = postprocess("".join(parts), blocks)
+            answer, sources, titles, refusal = postprocess("".join(parts), blocks, q)
             res = AskResult(answer, sources, titles, refusal, top_score=top, model=model)
         self._store(key, res, blocks, emb)
         yield "final", self._final(res.answer, res.sources, res.titles, res.refusal, res.model)

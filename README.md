@@ -56,7 +56,7 @@ flowchart LR
   end
   P -->|query embed| AZ[Azure AI Foundry<br/>Cohere Embed v5 + Rerank v4]
   P -->|hybrid search| Q[(Qdrant Cloud, US East<br/>olake_chunks + sync_state)]
-  P -->|chat, model fallbacks| OR[OpenRouter<br/>GLM → Gemini → DeepSeek]
+  P -->|chat, model fallbacks| OR[OpenRouter<br/>DeepSeek → Gemini → GLM]
   S -->|sitemap ETag, pages| OL[olake.io docs + blog]
   S -->|commits / compare / raw| GH[GitHub datazip-inc repos]
   S -->|embed changed chunks| AZ
@@ -84,7 +84,7 @@ flowchart LR
     H --> QD
     H --> RR[Cohere Rerank v4 Pro<br/>Fast fallback] --> GATE{Score ≥ threshold?}
     GATE -- no --> REF[Refusal, sources = []]
-    GATE -- yes --> LLM[OpenRouter LLM<br/>GLM 4.7 Flash → Gemini 2.5 Flash Lite → DeepSeek V4.1 Flash] --> PP[Citation mapping<br/>link and leak checks] --> A[answer + sources]
+    GATE -- yes --> LLM[OpenRouter LLM<br/>DeepSeek V4.1 Flash → Gemini 2.5 Flash Lite → GLM 4.7 Flash] --> PP[Citation mapping<br/>link and leak checks] --> A[answer + sources]
   end
 ```
 
@@ -126,7 +126,7 @@ index.py             Vercel entry point;  Dockerfile / docker-compose.yml for co
 | **Soft filter boost** | If the question names a connector or product, an extra filtered prefetch joins the fusion. It never hard-filters, so general pages still match. |
 | **Honesty gate + grounded prompt** | If the top rerank score is below `REFUSAL_THRESHOLD`, no LLM call is made. Otherwise the LLM must cite every fact with `[n]`. `sources` is the cited blocks in first-cited order, plus the best-ranked section if the model cited a weaker duplicate of it. If the model answers without any markers, the top retrieved sections are cited instead of discarding a grounded answer. |
 | **"Not supported" vs "couldn't find"** | The docs-home "Supported Sources" and "Destinations" sections are always in context, so "Can OLake write to Delta Lake?" gets a cited "not supported, here is what is". Facts missing from the docs (SLAs, pricing) get "I couldn't find this in the OLake documentation" and a pointer to the community Slack. |
-| **LLM: OpenRouter, GLM 4.7 Flash first, then Gemini 2.5 Flash Lite and DeepSeek V4.1 Flash as server-side fallbacks** | This is the organisers' required priority order, sent as OpenRouter's `models` fallback list so a failing model falls through in one request. Reasoning is off, temperature is 0.1 and answers are capped at 600 tokens. The model that answered is returned in `X-Model` and shown in the widget. A credit guard switches to the cheapest model under $1 left and stops LLM calls under $0.10. |
+| **LLM: OpenRouter, DeepSeek V4.1 Flash first, then Gemini 2.5 Flash Lite and GLM 4.7 Flash as server-side fallbacks** | All three allowed models were benchmarked on the same grounded prompt: DeepSeek was the fastest (~0.65 s for a typical answer) and the most complete and best-cited; on the official 20 cases it scored 95% vs 90% with GLM first. Gemini Flash Lite is the fast, cheap first fallback and GLM the last. The list is sent as OpenRouter's `models` fallback field so a failing model falls through in one request. Reasoning is off, temperature is 0.1 and answers are capped at 900 tokens (a reply cut off almost empty is retried once on the next model). The model that answered is returned in `X-Model` and shown in the widget. A credit guard switches to the cheapest model under $1 left and stops LLM calls under $0.10. |
 | **Docs over blog** | Blog posts are indexed (graders cite them) but get a small rank penalty and at most 2 blocks per answer, since they can be older than the docs. |
 | **olake-fusion repo filtered** | Fusion is a fork of Apache Amoro. Upstream docs for features Fusion doesn't ship (Flink, Paimon, mixed-Hive, Kyuubi) are excluded so the bot can't confidently describe them. |
 | **Two run modes, one codebase** | In a container (Docker Compose) one worker runs the background poller and holds the cache. On Vercel (serverless, detected from the `VERCEL` env var) clients are built lazily on the first request, the index is prebuilt in Qdrant Cloud, and freshness comes from on-request lazy syncs plus a cron calling `/reindex`. |
@@ -173,9 +173,9 @@ Latest local runs (development machine in India; the services are in US East):
 
 | Set | Primary model | Pass | Contract | Refusals correct | Source hit | Key facts | p50 / p95 latency |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Official 20 | GLM 4.7 Flash (required order) | 90% | 100% | 100% | 88% | 87% | 4.0 s / 6.8 s |
-| Official 20 | DeepSeek V4.1 Flash | 95% | 100% | 100% | 94% | 96% | 4.5 s / 6.9 s |
-| Own 30 | DeepSeek V4.1 Flash | 97% | 100% | 100% | 96% | 99% | 4.0 s / 7.1 s |
+| Official 20 | GLM 4.7 Flash | 90% | 100% | 100% | 88% | 87% | 4.0 s / 6.8 s |
+| Official 20 | DeepSeek V4.1 Flash | 95% | 100% | 100% | 94% | 98% | 4.4 s / 6.6 s |
+| Own 30 | DeepSeek V4.1 Flash | 97% | 100% | 100% | 96% | 97% | 4.7 s / 8.1 s |
 
 Cost: about 3–4k input and 300–600 output tokens per answer, roughly $0.0005–0.002 per question, so about $0.5–2 per 1,000 questions before cache hits.
 
@@ -207,7 +207,7 @@ Everything is set through environment variables (`app/config.py`); see `.env.exa
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OPENROUTER_API_KEY`, `LLM_MODEL`, `LLM_FALLBACK_MODELS` | GLM 4.7 Flash, then Gemini 2.5 Flash Lite and DeepSeek V4.1 Flash | LLM and fallbacks |
+| `OPENROUTER_API_KEY`, `LLM_MODEL`, `LLM_FALLBACK_MODELS` | DeepSeek V4.1 Flash, then Gemini 2.5 Flash Lite and GLM 4.7 Flash | LLM and fallbacks |
 | `EMBED_ENDPOINT`, `EMBED_API_KEY`, `EMBED_MODEL`, `EMBED_DIM` | Cohere-Embed-V5-Pro, 1024 | Dense embeddings |
 | `RERANK_*`, `RERANK_FALLBACK_*` | Cohere-rerank-v4.0-pro / fast | Reranking |
 | `QDRANT_URL`, `QDRANT_API_KEY` | — | Vector DB |

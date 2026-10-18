@@ -50,8 +50,8 @@ class LLMClient:
     def budget_exhausted(self) -> bool:
         return self.credit_remaining is not None and self.credit_remaining < self.s.llm_budget_stop_usd
 
-    def _body(self, messages: list[dict], stream: bool) -> dict:
-        models = self._models()
+    def _body(self, messages: list[dict], stream: bool, models: list[str] | None = None) -> dict:
+        models = models or self._models()
         extra = {"reasoning": {"effort": self.s.llm_reasoning_effort}, "usage": {"include": True}}
         if len(models) > 1:
             extra["models"] = models[1:]
@@ -74,11 +74,19 @@ class LLMClient:
         last: Exception | None = None
         async with self.sem:
             # one retry at most: OpenRouter already falls back across models server-side and graders allow 30 s
+            models = None
             for attempt in range(2):
                 try:
-                    resp = await self.client.chat.completions.create(**self._body(messages, False))
+                    resp = await self.client.chat.completions.create(**self._body(messages, False, models))
                     self._track(resp.usage)
-                    return (resp.choices[0].message.content or "").strip(), resp.model
+                    choice = resp.choices[0]
+                    text = (choice.message.content or "").strip()
+                    if choice.finish_reason == "length" and len(text) < 400 and attempt == 0:
+                        # degenerate output (e.g. a padded table) ate the token budget: retry on the next model
+                        log.warning("llm_truncated_retry", model=resp.model, chars=len(text))
+                        models = [m for m in self._models() if m != resp.model] or None
+                        continue
+                    return text, resp.model
                 except (APITimeoutError, RateLimitError, APIError, httpx.HTTPError) as e:
                     last = e
                     status = getattr(e, "status_code", None)

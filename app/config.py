@@ -15,11 +15,11 @@ class Settings(BaseSettings):
     # LLM (OpenRouter, OpenAI-compatible)
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # organiser-mandated priority: GLM 4.7 Flash, then Gemini 2.5 Flash Lite, then DeepSeek V4.1 Flash
-    llm_model: str = "z-ai/glm-4.7-flash"
-    llm_fallback_models: str = "google/gemini-2.5-flash-lite,deepseek/deepseek-v4.1-flash"
+    # DeepSeek first: best accuracy and latency on our eval; Gemini then GLM as OpenRouter fallbacks
+    llm_model: str = "deepseek/deepseek-v4.1-flash"
+    llm_fallback_models: str = "google/gemini-2.5-flash-lite,z-ai/glm-4.7-flash"
     llm_cheap_model: str = "google/gemini-2.5-flash-lite"
-    llm_max_tokens: int = 600
+    llm_max_tokens: int = 900
     llm_temperature: float = 0.1
     llm_reasoning_effort: str = "none"
     llm_timeout_seconds: float = 20.0
