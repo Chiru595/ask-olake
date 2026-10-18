@@ -59,8 +59,13 @@ def test_sources_are_cited_blocks_in_first_cited_order():
     assert "[1]" in text and not refusal
 
 
-def test_uncited_answer_becomes_refusal():
+def test_uncited_answer_cites_top_blocks():
     text, sources, _, refusal = postprocess("Some answer with no citations.", BLOCKS)
+    assert not refusal and sources == ["https://olake.io/docs/a/#x", "https://olake.io/docs/b/"]
+
+
+def test_empty_answer_becomes_refusal():
+    text, sources, _, refusal = postprocess("", BLOCKS)
     assert refusal and sources == [] and text.startswith(REFUSAL)
 
 
@@ -120,3 +125,9 @@ def test_version_reads_env(client, monkeypatch):
     monkeypatch.setenv("VERCEL_GIT_COMMIT_SHA", "abc123")
     monkeypatch.setenv("VERCEL_DEPLOYMENT_ID", "dpl_x")
     assert client.get("/version").json() == {"commit": "abc123", "deployment": "dpl_x"}
+
+
+def test_refusal_citing_support_list_becomes_not_supported():
+    blocks = BLOCKS + [Block(3, "https://olake.io/docs/#destinations", "Overview", ["Overview", "Destinations"], "t", ["id3"], 0.0)]
+    text, sources, _, refusal = postprocess(REFUSAL + " OLake writes Iceberg and Parquet [3].", blocks)
+    assert not refusal and text.startswith("That is not supported by OLake") and sources == ["https://olake.io/docs/#destinations"]

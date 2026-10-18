@@ -30,7 +30,7 @@ INJECTION = re.compile(
     r"|\bjailbreak\b|\bDAN mode\b|developer mode",
     re.I,
 )
-CITE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+CITE = re.compile(r"[\[【]\^?(?:Block\s*|Source\s*)?(\d+(?:\s*[,;]\s*\d+)*)[\]】]", re.I)
 MD_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 BARE_URL = re.compile(r"(?<!\()https?://[^\s)\]>]+")
 SECRET = re.compile(r"sk-or-v1-|sk-[A-Za-z0-9]{20,}|api[_-]?key\s*[:=]\s*\S{8,}", re.I)
@@ -87,7 +87,10 @@ def postprocess(raw: str, blocks: list[Block]) -> tuple[str, list[str], list[str
     text = raw.strip()
     if any(m in text for m in LEAK_MARKERS) or SECRET.search(text):
         return OUT_OF_SCOPE, [], [], True
-    if not text or text.startswith(REFUSAL):
+    if text.startswith(REFUSAL) and any(f"[{b.n}]" in text for b in blocks if b.url in PINNED_URLS):
+        # "couldn't find" + citing the supported-sources/destinations lists = the thing isn't supported
+        text = "That is not supported by OLake. " + text[len(REFUSAL):].lstrip()
+    elif not text or text.startswith(REFUSAL):
         if not text:
             return WEAK_RETRIEVAL, [], [], True
         text = CITE.sub("", text).strip()
@@ -100,7 +103,7 @@ def postprocess(raw: str, blocks: list[Block]) -> tuple[str, list[str], list[str
 
     def renum(m: re.Match) -> str:
         out = []
-        for part in m.group(1).split(","):
+        for part in re.split(r"[,;]", m.group(1)):
             b = by_n.get(int(part.strip()))
             if not b or not b.url.startswith(ALLOWED_SOURCE_PREFIXES):
                 continue
@@ -114,7 +117,13 @@ def postprocess(raw: str, blocks: list[Block]) -> tuple[str, list[str], list[str
 
     text = CITE.sub(renum, text)
     if not order:
-        return WEAK_RETRIEVAL, [], [], True
+        # model answered from the context but forgot markers: cite the top retrieved sections instead of refusing
+        for b in [b for b in blocks if b.score > 0][:2] or blocks[:1]:
+            if b.url.startswith(ALLOWED_SOURCE_PREFIXES) and b.url not in order:
+                order.append(b.url)
+                titles.append(f"{b.title} — {b.heading_path[-1]}" if len(b.heading_path) > 1 else b.title)
+        if not order:
+            return WEAK_RETRIEVAL, [], [], True
     known = {b.url.split("#")[0] for b in blocks}
     known_text = " ".join(b.text for b in blocks)
 
