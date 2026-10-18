@@ -164,8 +164,9 @@ class Pipeline:
         timings["rerank_ms"] = round((time.perf_counter() - t) * 1000)
         if rr:
             scored, model = rr
-            # blog posts can be older than the docs: small penalty so docs win near-ties
-            ranked = [(hits[i], sc - (0.05 if hits[i].payload.get("source_type") == "blog" else 0.0)) for i, sc in scored]
+            # docs are canonical: repo files and (possibly older) blog posts get a small penalty on near-ties
+            penalty = {"blog": 0.05, "repo": 0.03}
+            ranked = [(hits[i], sc - penalty.get(hits[i].payload.get("source_type"), 0.0)) for i, sc in scored]
             # docs before repo content at (near) equal score
             prio = {"docs": 0, "repo": 1, "blog": 2}
             ranked.sort(key=lambda x: (-round(x[1], 2), prio.get(x[0].payload.get("source_type"), 3)))
