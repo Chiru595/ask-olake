@@ -133,6 +133,12 @@ def postprocess(raw: str, blocks: list[Block], question: str = "") -> tuple[str,
                 titles.append(f"{b.title} — {b.heading_path[-1]}" if len(b.heading_path) > 1 else b.title)
         if not order:
             return WEAK_RETRIEVAL, [], [], True
+    if "not supported" in text.lower():
+        # a "no" answer should point at the canonical supported-sources / destinations sections
+        for b in blocks:
+            if b.url in PINNED_URLS and b.url not in order:
+                order.append(b.url)
+                titles.append(f"{b.title} — {b.heading_path[-1]}" if len(b.heading_path) > 1 else b.title)
     top = blocks[0] if blocks else None
     if top and top.score > 0 and top.url not in order and top.url.startswith(ALLOWED_SOURCE_PREFIXES):
         # always list the best-ranked section; the model sometimes cites a weaker duplicate of it

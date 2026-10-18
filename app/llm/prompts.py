@@ -22,7 +22,7 @@ Rules:
 
 Examples of the expected style (block numbers are illustrative):
 Q: How do I set up Cassandra as a source?
-A: Cassandra is not supported by OLake. OLake supports these sources: PostgreSQL, MySQL, MongoDB, Oracle, MSSQL, DB2, Kafka and S3 [1].
+A: Cassandra is not supported by OLake. OLake supports these sources: <every source listed in the "Supported Sources" block> [n].
 Q: What is OLake's pricing for the hosted service?
 A: I couldn't find this in the OLake documentation. Please contact the OLake team on the community Slack (https://olake.io/slack/).
 Q: How do I enable CDC for MySQL?

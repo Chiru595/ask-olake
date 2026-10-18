@@ -138,3 +138,9 @@ def test_offtopic_refusal_is_not_rewritten():
     blocks = BLOCKS + [Block(3, "https://olake.io/docs/#destinations", "Overview", ["Overview", "Destinations"], "t", ["id3"], 0.0)]
     text, sources, _, refusal = postprocess(REFUSAL + " I can help with OLake instead [3].", blocks, "Write me a poem")
     assert refusal and sources == []
+
+
+def test_not_supported_answer_lists_support_sections():
+    blocks = BLOCKS + [Block(3, "https://olake.io/docs/#supported-sources", "Overview", ["Overview", "Supported Sources"], "t", ["id3"], 0.0)]
+    _, sources, _, refusal = postprocess("Cassandra is not supported by OLake [1].", blocks, "Cassandra in OLake?")
+    assert not refusal and "https://olake.io/docs/#supported-sources" in sources
