@@ -44,6 +44,30 @@ The widget is a single vanilla web component (`<ask-olake>`, about 30 KB, no dep
 
 ## Architecture
 
+### Deployment
+
+```mermaid
+flowchart LR
+  U[Docs site visitor<br/>widget.js] -->|POST /ask/stream| V
+  J[Grader / API client] -->|POST /ask| V
+  subgraph V["Vercel serverless function (FastAPI, index.py)"]
+    API[API routes] --> P[Answer pipeline]
+    API --> S[Sync cycle]
+  end
+  P -->|query embed| AZ[Azure AI Foundry<br/>Cohere Embed v5 + Rerank v4]
+  P -->|hybrid search| Q[(Qdrant Cloud, US East<br/>olake_chunks + sync_state)]
+  P -->|chat, model fallbacks| OR[OpenRouter<br/>GLM → Gemini → DeepSeek]
+  S -->|sitemap ETag, pages| OL[olake.io docs + blog]
+  S -->|commits / compare / raw| GH[GitHub datazip-inc repos]
+  S -->|embed changed chunks| AZ
+  S -->|upsert / delete| Q
+  CRON[GitHub Actions cron<br/>every 5 min] -->|POST /reindex| V
+```
+
+The same code also runs as a long-lived container (`docker compose up`): there, a background asyncio poller drives the sync every 60 s and the MCP server is mounted at `/mcp`.
+
+### Sync and answer flow
+
 ```mermaid
 flowchart LR
   subgraph Sync["Sync (every 60 s, one asyncio task)"]
@@ -64,6 +88,32 @@ flowchart LR
   end
 ```
 
+### Project layout
+
+```
+app/
+  main.py            FastAPI app, routes, error contract, CORS, static widget
+  runtime.py         lazy, idempotent wiring of clients (serverless-safe)
+  config.py          every setting from environment variables (pydantic-settings)
+  api/               ask.py (/ask, /ask/stream, /ask/debug), status.py (/status, /health), admin.py (/reindex),
+                     meta.py (/version, /models)
+  ingest/            docs_crawler.py (sitemap + rendered HTML → sections), repo_loader.py (include rules,
+                     GitHub API, clones), chunker.py (heading-aware chunks, IDs, hashes), classify.py, indexer.py
+  sync/              poller.py (incremental/full cycles, per-source isolation), state.py (state in Qdrant)
+  retrieval/         embeddings.py (Cohere + BM25, TPM budget), search.py (hybrid RRF + boost),
+                     rerank.py (Pro → Fast), pipeline.py (gate, prompt, citations, guardrails)
+  llm/               client.py (OpenRouter, fallbacks, cost guard, streaming), prompts.py
+  cache.py           TTL answer cache + chunk→answer reverse index for targeted eviction
+  security.py        rate limiting, admin auth;  observability.py  JSON logs, request IDs, timings
+  mcp_server.py      ask_olake / search_docs MCP tools (container mode)
+widget/              ask-olake.js (Shadow DOM web component), demo.html
+eval/                olake_testcases.jsonl (official 20), questions.jsonl (30), run_eval.py
+scripts/full_index.py  one-off full index into Qdrant
+models/              bundled BM25 + tiktoken files (no downloads on cold start)
+tests/               chunker, cache invalidation, citation post-processing, /ask contract
+index.py             Vercel entry point;  Dockerfile / docker-compose.yml for container runs
+```
+
 ## Design decisions
 
 | Decision | Why |
@@ -74,7 +124,7 @@ flowchart LR
 | **Qdrant hybrid search** (dense + BM25 with IDF, fused server-side with RRF in one Query API call) | Dense vectors catch meaning; BM25 catches exact terms like `pgoutput`, `binlog_row_image` or error strings. Writes are searchable immediately (`wait=true`), which the 60 s freshness relies on. |
 | **Cohere Embed v5 (1024-d) and Rerank v4 Pro on Azure** | High retrieval quality. Rerank scores separate answerable from unanswerable questions well (≥ 0.93 vs ≤ 0.81 on our eval), which drives the honesty gate. Fast is the reranker fallback, then RRF order. |
 | **Soft filter boost** | If the question names a connector or product, an extra filtered prefetch joins the fusion. It never hard-filters, so general pages still match. |
-| **Honesty gate + grounded prompt** | If the top rerank score is below `REFUSAL_THRESHOLD`, no LLM call is made. Otherwise the LLM must cite every fact. Answers with no valid citation become refusals, and `sources` is only the cited blocks, in first-cited order. |
+| **Honesty gate + grounded prompt** | If the top rerank score is below `REFUSAL_THRESHOLD`, no LLM call is made. Otherwise the LLM must cite every fact with `[n]`. `sources` is the cited blocks in first-cited order, plus the best-ranked section if the model cited a weaker duplicate of it. If the model answers without any markers, the top retrieved sections are cited instead of discarding a grounded answer. |
 | **"Not supported" vs "couldn't find"** | The docs-home "Supported Sources" and "Destinations" sections are always in context, so "Can OLake write to Delta Lake?" gets a cited "not supported, here is what is". Facts missing from the docs (SLAs, pricing) get "I couldn't find this in the OLake documentation" and a pointer to the community Slack. |
 | **LLM: OpenRouter, GLM 4.7 Flash first, then Gemini 2.5 Flash Lite and DeepSeek V4.1 Flash as server-side fallbacks** | This is the organisers' required priority order, sent as OpenRouter's `models` fallback list so a failing model falls through in one request. Reasoning is off, temperature is 0.1 and answers are capped at 600 tokens. The model that answered is returned in `X-Model` and shown in the widget. A credit guard switches to the cheapest model under $1 left and stops LLM calls under $0.10. |
 | **Docs over blog** | Blog posts are indexed (graders cite them) but get a small rank penalty and at most 2 blocks per answer, since they can be older than the docs. |
@@ -119,12 +169,13 @@ python eval/run_eval.py --base-url https://<your-host> --file eval/olake_testcas
 
 The runner checks the exact contract shape, refusal behaviour, page-level source hits, key-fact coverage and p50/p95 latency, and prints rerank top scores to help tune `REFUSAL_THRESHOLD`.
 
-Latest local run (development machine in India; the services are in US East; measured with DeepSeek V4.1 Flash as the primary model, before the organisers fixed the GLM-first order):
+Latest local runs (development machine in India; the services are in US East):
 
-| Set | Pass | Contract | Refusals correct | Source hit | Key facts | p50 / p95 latency |
-| --- | --- | --- | --- | --- | --- | --- |
-| Official 20 | 95% | 100% | 100% | 94% | 96% | 4.5 s / 6.9 s |
-| Own 30 | 97% | 100% | 100% | 96% | 99% | 4.0 s / 7.1 s |
+| Set | Primary model | Pass | Contract | Refusals correct | Source hit | Key facts | p50 / p95 latency |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Official 20 | GLM 4.7 Flash (required order) | 90% | 100% | 100% | 88% | 87% | 4.0 s / 6.8 s |
+| Official 20 | DeepSeek V4.1 Flash | 95% | 100% | 100% | 94% | 96% | 4.5 s / 6.9 s |
+| Own 30 | DeepSeek V4.1 Flash | 97% | 100% | 100% | 96% | 99% | 4.0 s / 7.1 s |
 
 Cost: about 3–4k input and 300–600 output tokens per answer, roughly $0.0005–0.002 per question, so about $0.5–2 per 1,000 questions before cache hits.
 

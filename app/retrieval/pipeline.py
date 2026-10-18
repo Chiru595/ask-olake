@@ -14,7 +14,15 @@ from app.config import Settings
 from app.ingest.chunker import count_tokens
 from app.ingest.indexer import f_doc
 from app.llm.client import LLMClient, LLMUnavailable
-from app.llm.prompts import CONTACT, OUT_OF_SCOPE, REFUSAL, SYSTEM_PROMPT, WEAK_RETRIEVAL, build_user_message, format_block
+from app.llm.prompts import (
+    CONTACT,
+    OUT_OF_SCOPE,
+    REFUSAL,
+    SYSTEM_PROMPT,
+    WEAK_RETRIEVAL,
+    build_user_message,
+    format_block,
+)
 from app.retrieval.embeddings import Embedder, SparseEmbedder
 from app.retrieval.rerank import Reranker
 from app.retrieval.search import Hit, hybrid_search
@@ -296,7 +304,7 @@ class Pipeline:
                cache: bool = False) -> dict:
         titles = titles or [urlparse(u).path.strip("/").split("/")[-1] or u for u in sources]
         return {"answer": answer, "refusal": refusal, "cache": cache, "model": model,
-                "sources": [{"url": u, "title": t} for u, t in zip(sources, titles)]}
+                "sources": [{"url": u, "title": t} for u, t in zip(sources, titles, strict=True)]}
 
 
 __all__ = ["Pipeline", "AskResult", "InvalidQuestion", "LLMUnavailable", "Hit"]

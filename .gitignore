@@ -4,4 +4,4 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .cache/
-eval/results.json
+eval/results*.json

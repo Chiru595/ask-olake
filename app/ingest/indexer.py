@@ -63,10 +63,10 @@ class Indexer:
         dense = await self.dense.embed_documents(texts)
         sparse = await self.sparse.embed_documents(texts)
         points = [models.PointStruct(id=c.chunk_id, vector={"dense": d, "bm25": sp}, payload=c.payload())
-                  for c, d, sp in zip(chunks, dense, sparse)]
+                  for c, d, sp in zip(chunks, dense, sparse, strict=True)]
         for i in range(0, len(points), 128):
             await self.q.upsert(self.col, points=points[i:i + 128], wait=True)
-        return {c.chunk_id: d for c, d in zip(chunks, dense)}
+        return {c.chunk_id: d for c, d in zip(chunks, dense, strict=True)}
 
     async def delete_where(self, flt: models.Filter) -> list[str]:
         ids = list((await self.existing(flt)).keys())
