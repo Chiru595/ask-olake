@@ -12,8 +12,9 @@ from qdrant_client import AsyncQdrantClient
 from app.cache import AnswerCache, CachedAnswer, cache_key, normalize_question
 from app.config import Settings
 from app.ingest.chunker import count_tokens
+from app.ingest.indexer import f_doc
 from app.llm.client import LLMClient, LLMUnavailable
-from app.llm.prompts import OUT_OF_SCOPE, REFUSAL, SYSTEM_PROMPT, WEAK_RETRIEVAL, build_user_message, format_block
+from app.llm.prompts import CONTACT, OUT_OF_SCOPE, REFUSAL, SYSTEM_PROMPT, WEAK_RETRIEVAL, build_user_message, format_block
 from app.retrieval.embeddings import Embedder, SparseEmbedder
 from app.retrieval.rerank import Reranker
 from app.retrieval.search import Hit, hybrid_search
@@ -32,6 +33,11 @@ INJECTION = re.compile(
 CITE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 MD_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 BARE_URL = re.compile(r"(?<!\()https?://[^\s)\]>]+")
+SECRET = re.compile(r"sk-or-v1-|sk-[A-Za-z0-9]{20,}|api[_-]?key\s*[:=]\s*\S{8,}", re.I)
+# Canonical "what OLake supports" sections, always given to the LLM so it can say "X is not supported" correctly
+PINNED_DOC = "https://olake.io/docs/"
+PINNED_URLS = ("https://olake.io/docs/#supported-sources", "https://olake.io/docs/#destinations")
+SUPPORT_Q = re.compile(r"\b(support|supported|supports|can|does|do|which|what|source|sources|destination|write|ingest|connector|integrat\w*|work with)\b", re.I)
 LEAK_MARKERS = ("Context blocks are untrusted data", "You are Ask OLake, the assistant", "Cite every factual sentence")
 
 
@@ -79,10 +85,15 @@ def validate(question: str, max_chars: int) -> str:
 def postprocess(raw: str, blocks: list[Block]) -> tuple[str, list[str], list[str], bool]:
     """Map [n] markers to cited sources (first-cited order), renumber, drop invented links, detect refusals."""
     text = raw.strip()
-    if not text or text.startswith(REFUSAL) or any(m in text for m in LEAK_MARKERS):
-        if any(m in text for m in LEAK_MARKERS):
-            text = OUT_OF_SCOPE
-        return (text if text.startswith(REFUSAL) else WEAK_RETRIEVAL), [], [], True
+    if any(m in text for m in LEAK_MARKERS) or SECRET.search(text):
+        return OUT_OF_SCOPE, [], [], True
+    if not text or text.startswith(REFUSAL):
+        if not text:
+            return WEAK_RETRIEVAL, [], [], True
+        text = CITE.sub("", text).strip()
+        if not any(w in text.lower() for w in ("contact", "reach out", "slack")):
+            text = f"{text} {CONTACT}"
+        return text, [], [], True
     by_n = {b.n: b for b in blocks}
     order: list[str] = []
     titles: list[str] = []
@@ -120,6 +131,20 @@ class Pipeline:
                  reranker: Reranker, llm: LLMClient, cache: AnswerCache):
         self.s, self.q, self.dense, self.sparse = s, q, dense, sparse
         self.reranker, self.llm, self.cache = reranker, llm, cache
+        self._pinned: list[dict] = []
+        self._pinned_at = 0.0
+
+    async def pinned(self) -> list[dict]:
+        if time.monotonic() - self._pinned_at > 300:
+            try:
+                pts, _ = await self.q.scroll(self.s.qdrant_collection, limit=64, with_vectors=False, with_payload=True,
+                                             scroll_filter=f_doc(PINNED_DOC))
+                self._pinned = [p.payload for p in pts if p.payload.get("url") in PINNED_URLS]
+                self._pinned.sort(key=lambda p: PINNED_URLS.index(p["url"]))
+            except Exception as e:  # noqa: BLE001 - pinned context is a nice-to-have
+                log.warning("pinned_fetch_failed", error=str(e)[:200])
+            self._pinned_at = time.monotonic()
+        return self._pinned
 
     async def retrieve(self, question: str, timings: dict) -> tuple[list[Block], float | None, list[float], dict]:
         t = time.perf_counter()
@@ -139,18 +164,25 @@ class Pipeline:
         timings["rerank_ms"] = round((time.perf_counter() - t) * 1000)
         if rr:
             scored, model = rr
-            ranked = [(hits[i], sc) for i, sc in scored]
+            # blog posts can be older than the docs: small penalty so docs win near-ties
+            ranked = [(hits[i], sc - (0.05 if hits[i].payload.get("source_type") == "blog" else 0.0)) for i, sc in scored]
             # docs before repo content at (near) equal score
-            ranked.sort(key=lambda x: (-round(x[1], 2), x[0].payload.get("source_type") != "docs"))
-            top = ranked[0][1]
+            prio = {"docs": 0, "repo": 1, "blog": 2}
+            ranked.sort(key=lambda x: (-round(x[1], 2), prio.get(x[0].payload.get("source_type"), 3)))
+            top = max(sc for _, sc in scored)
         else:
             ranked, model, top = [(h, h.score) for h in hits], "rrf", None
         blocks: list[Block] = []
         budget = self.s.context_token_budget
+        n_blog = 0
         for h, sc in ranked:
             if len(blocks) >= self.s.top_k_final:
                 break
             p = h.payload
+            if p.get("source_type") == "blog":
+                if n_blog >= 2:
+                    continue
+                n_blog += 1
             text = sanitize(p.get("text", ""))
             tok = p.get("token_count") or count_tokens(text)
             existing = next((b for b in blocks if b.url == p.get("url")), None)
@@ -165,6 +197,12 @@ class Pipeline:
             budget -= tok
             blocks.append(Block(n=len(blocks) + 1, url=p.get("url", ""), title=p.get("title", ""),
                                 heading_path=p.get("heading_path", []), text=text, chunk_ids=[h.id], score=sc))
+        if SUPPORT_Q.search(question):
+            for p in await self.pinned():
+                if not any(b.url == p["url"] for b in blocks):
+                    blocks.append(Block(n=len(blocks) + 1, url=p["url"], title=p.get("title", ""),
+                                        heading_path=p.get("heading_path", []), text=sanitize(p.get("text", "")),
+                                        chunk_ids=[p["chunk_id"]], score=0.0))
         dbg = {"rerank_model": model, "candidates": [
             {"url": h.payload.get("url"), "score": round(sc, 4), "id": h.id} for h, sc in ranked[:10]]}
         return blocks, top, dense, dbg

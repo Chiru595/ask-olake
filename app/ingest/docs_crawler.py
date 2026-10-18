@@ -38,7 +38,7 @@ async def fetch_sitemap(client: httpx.AsyncClient, s: Settings, etag: str | None
     for m in re.finditer(r"<url>(.*?)</url>", r.text, re.S):
         block = m.group(1)
         loc = re.search(r"<loc>\s*(.*?)\s*</loc>", block)
-        if not loc or s.docs_path_prefix not in loc.group(1) or any(x in loc.group(1) for x in s.docs_exclude_list):
+        if not loc or not s.wants_url(loc.group(1)):
             continue
         lm = re.search(r"<lastmod>\s*(.*?)\s*</lastmod>", block)
         entries[loc.group(1)] = lm.group(1) if lm else None
@@ -65,13 +65,16 @@ def _clean(t: str) -> str:
 def parse_docs_html(html: str, url: str, base_url: str) -> tuple[str, str, list[Section]]:
     """Return (title, main_text_hash, sections). Splits on every h2/h3, including ones inside tabs."""
     soup = BeautifulSoup(html, "lxml")
-    md = soup.select_one(".theme-doc-markdown") or soup.select_one("article")
+    # docs pages render into .theme-doc-markdown, blog posts into article .markdown
+    md = soup.select_one(".theme-doc-markdown") or soup.select_one("article .markdown")
     if md is None:
         return url, "", []
     crumbs = [_clean(li.get_text(" ", strip=True)) for li in soup.select(".theme-doc-breadcrumbs li")]
     crumbs = [c for c in crumbs if c]
-    h1 = md.select_one("h1")
+    h1 = md.select_one("h1") or soup.select_one("article header h1") or soup.select_one("h1")
     title = crumbs[-1] if crumbs else (_clean(h1.get_text(" ", strip=True)) if h1 else url)
+    if "/blog/" in url:
+        crumbs = ["Blog", title]
     for sel in ["a.hash-link", "button", "script", "style", "svg", "img", "nav", "iframe", "h1", "form"]:
         for el in md.select(sel):
             el.decompose()
@@ -87,12 +90,13 @@ def parse_docs_html(html: str, url: str, base_url: str) -> tuple[str, str, list[
             ul.decompose()
     codes: list[tuple[str, str]] = []
     for pre in md.select("pre"):
-        lang = ""
-        parent = pre.find_parent(class_=re.compile(r"language-"))
-        if parent:
-            m = re.search(r"language-(\S+)", " ".join(parent.get("class", [])))
-            lang = m.group(1) if m else ""
-        codes.append((lang, pre.get_text().rstrip()))
+        holder = pre if any(c.startswith("language-") for c in pre.get("class", [])) else pre.find_parent(class_=re.compile(r"language-"))
+        m = re.search(r"language-(\S+)", " ".join(holder.get("class", []))) if holder else None
+        lang = m.group(1) if m else ""
+        lines = pre.select(".token-line")
+        # Prism renders one div per line; get_text() alone would glue lines together
+        code = "\n".join(ln.get_text() for ln in lines) if lines else pre.get_text()
+        codes.append((lang, code.rstrip()))
         pre.replace_with(NavigableString(f"QQPRE{len(codes) - 1}QQEND"))
     for adm in md.select(".theme-admonition"):
         kind = next((c.split("-")[-1] for c in adm.get("class", []) if c.startswith("theme-admonition-")), "note")
@@ -134,6 +138,7 @@ def page_to_chunks(html: str, url: str, lastmod: str | None, s: Settings) -> tup
     if sum(count_tokens(x.text) for x in sections) < 50:
         return page_hash, []
     component, connector = classify(url)
-    chunks = build_chunks(sections, doc_url=url, title=title, source_type="docs", component=component,
+    source_type = "blog" if "/blog/" in url else "docs"
+    chunks = build_chunks(sections, doc_url=url, title=title, source_type=source_type, component=component,
                           connector=connector, last_updated=lastmod)
     return page_hash, chunks

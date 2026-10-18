@@ -170,7 +170,9 @@ class Poller:
         old_hashes = {u: v.get("page_hash") for u, v in pages.items()}
         await asyncio.gather(*(one(u) for u in todo))
         if full:
-            result.add(await self.ix.sync_chunks(f_eq("source_type", "docs"), all_chunks))
+            for st_name in ("docs", "blog"):
+                result.add(await self.ix.sync_chunks(f_eq("source_type", st_name),
+                                                     [c for c in all_chunks if c.source_type == st_name]))
         if not sm.not_modified:
             for gone in [u for u in pages if u not in entries]:
                 result.deleted += await self.ix.delete_where(f_doc(gone))

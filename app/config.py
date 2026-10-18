@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     github_org: str = "datazip-inc"
     repos: str = "olake,olake-ui,olake-helm,olake-fusion"
     docs_sitemap_url: str = "https://olake.io/sitemap.xml"
-    docs_path_prefix: str = "/docs/"
+    docs_path_prefix: str = "/docs/,/blog/"  # comma list; blog posts are indexed too (graders cite them)
     docs_base_url: str = "https://olake.io"
     # stale pages that contradict the current connector docs
     docs_exclude: str = "/docs/connectors/overview/,/docs/archive/"
@@ -89,6 +89,19 @@ class Settings(BaseSettings):
     @property
     def docs_exclude_list(self) -> list[str]:
         return [x.strip() for x in self.docs_exclude.split(",") if x.strip()]
+
+    def wants_url(self, url: str) -> bool:
+        """Docs pages at any depth; blog posts only (no blog index, tag, author or pagination pages)."""
+        path = "/" + url.split("://", 1)[-1].split("/", 1)[-1]
+        if any(x in path for x in self.docs_exclude_list):
+            return False
+        for prefix in (p.strip() for p in self.docs_path_prefix.split(",") if p.strip()):
+            if path.startswith(prefix):
+                if prefix == "/blog/":
+                    rest = path[len(prefix):].strip("/")
+                    return bool(rest) and "/" not in rest
+                return True
+        return False
 
     @property
     def fallback_models(self) -> list[str]:

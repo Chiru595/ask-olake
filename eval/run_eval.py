@@ -26,7 +26,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-REFUSAL_PREFIX = "I don't know based on the OLake documentation."
+REFUSAL_PREFIX = "I couldn't find this in the OLake documentation."
 # Extra phrasing counted as a refusal, but only when sources == [].
 OUTSIDE_SCOPE_MARKERS = ("outside", "out of scope", "out-of-scope", "only answer questions about olake")
 
