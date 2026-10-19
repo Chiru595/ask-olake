@@ -31,6 +31,7 @@ log = structlog.get_logger()
 
 NO_LLM_GATE = "none (retrieval gate, no LLM call)"
 NO_LLM_GUARD = "none (input guardrail, no LLM call)"
+NO_LLM_FALLBACK = "none (LLM unavailable, retrieval-only answer)"
 ALLOWED_SOURCE_PREFIXES = ("https://olake.io/", "https://github.com/datazip-inc/")
 INJECTION = re.compile(
     r"(ignore|disregard|forget)\s+(all\s+|any\s+|the\s+|your\s+|previous\s+|prior\s+|above\s+)*(instructions|rules|prompt)"
@@ -109,6 +110,26 @@ def trim_truncated(text: str) -> str:
     if text.count("**") % 2:
         text = text[:text.rfind("**")] + text[text.rfind("**") + 2:]
     return text + TRUNCATED_NOTE
+
+
+def retrieval_only(blocks: list[Block]) -> tuple[str, list[str], list[str]]:
+    """Fail-soft answer when no LLM is reachable: point at the best-matching docs sections with short excerpts."""
+    picked: list[Block] = []
+    for b in blocks:
+        if b.score > 0 and b.url.startswith(ALLOWED_SOURCE_PREFIXES) and \
+                b.url.split("#")[0] not in {p.url.split("#")[0] for p in picked}:
+            picked.append(b)
+        if len(picked) == 3:
+            break
+    lines = []
+    for i, b in enumerate(picked, 1):
+        plain = re.sub(r"```.*?```|[`*_#>|]", " ", b.text, flags=re.S)
+        plain = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", re.sub(r"\s+", " ", plain)).strip()
+        excerpt = plain[:220].rsplit(" ", 1)[0] + "…" if len(plain) > 220 else plain
+        lines.append(f"- **{source_title(b)}** [{i}]: {excerpt}")
+    answer = ("The AI answer service is unavailable right now, so here are the most relevant parts of the OLake "
+              "documentation for your question:\n\n" + "\n".join(lines))
+    return answer, [b.url for b in picked], [source_title(b) for b in picked]
 
 
 def postprocess(raw: str, blocks: list[Block], question: str = "") -> tuple[str, list[str], list[str], bool]:
@@ -289,7 +310,10 @@ class Pipeline:
             res = AskResult(WEAK_RETRIEVAL, [], refusal=True, top_score=top, model=NO_LLM_GATE)
         else:
             t = time.perf_counter()
-            raw, model, truncated = await self.llm.complete(self._messages(q, blocks))
+            try:
+                raw, model, truncated = await self.llm.complete(self._messages(q, blocks))
+            except LLMUnavailable:
+                return self._fallback(blocks, top)
             timings["llm_ms"] = round((time.perf_counter() - t) * 1000)
             if truncated:
                 raw = trim_truncated(raw)
@@ -318,20 +342,33 @@ class Pipeline:
         else:
             parts: list[str] = []
             model, truncated = None, False
-            async for kind, val in self.llm.stream(self._messages(q, blocks)):
-                if kind == "model":
-                    model = val
-                    yield "model", {"model": val}
-                elif kind == "finish":
-                    truncated = val == "length"
-                else:
-                    parts.append(val)
-                    yield "token", {"t": val}
+            try:
+                async for kind, val in self.llm.stream(self._messages(q, blocks)):
+                    if kind == "model":
+                        model = val
+                        yield "model", {"model": val}
+                    elif kind == "finish":
+                        truncated = val == "length"
+                    else:
+                        parts.append(val)
+                        yield "token", {"t": val}
+            except LLMUnavailable:
+                fb = self._fallback(blocks, top)
+                yield "final", self._final(fb.answer, fb.sources, fb.titles, False, fb.model)
+                return
             raw = "".join(parts)
             answer, sources, titles, refusal = postprocess(trim_truncated(raw) if truncated else raw, blocks, q)
             res = AskResult(answer, sources, titles, refusal, top_score=top, model=model)
         self._store(key, res, blocks, emb)
         yield "final", self._final(res.answer, res.sources, res.titles, res.refusal, res.model)
+
+    @staticmethod
+    def _fallback(blocks: list[Block], top: float | None) -> AskResult:
+        """Not cached, so real answers resume as soon as the LLM is reachable again."""
+        answer, sources, titles = retrieval_only(blocks)
+        if not sources:
+            raise LLMUnavailable("no LLM and no retrievable sections")
+        return AskResult(answer, sources, titles, False, top_score=top, model=NO_LLM_FALLBACK)
 
     @staticmethod
     def _final(answer: str, sources: list[str], titles: list[str], refusal: bool, model: str | None,

@@ -1,6 +1,16 @@
 # Ask OLake
 
-A production-grade RAG assistant for the [OLake](https://olake.io/docs/) docs. It answers questions about OLake ingestion and OLake Fusion with exact source links, says plainly when the docs don't cover something, and keeps itself fresh by re-indexing changed content every 60 seconds.
+A production-grade RAG assistant for the [OLake](https://olake.io/docs/) docs. It answers questions about OLake ingestion and OLake Fusion with exact source links, says plainly when the docs don't cover something, and keeps itself fresh by re-indexing only what changed upstream.
+
+**2nd prize at [Hacktoberfest Hack Day Bengaluru × OLake](https://events.mlh.com/events/15468-hacktoberfest-hack-day-bengaluru-x-olake) (October 2026).** Built in the 4-hour hacking window and scored on a hidden test set: 95% on the organisers' 20 public test cases on the live deployment, with a 100% contract and refusal pass rate.
+
+**Live:** https://ask-olake-sooty.vercel.app (demo page with the widget) · [`/status`](https://ask-olake-sooty.vercel.app/status) · [`/docs`](https://ask-olake-sooty.vercel.app/docs)
+
+> The hackathon's OpenRouter key has been retired, so the live site currently answers in **retrieval-only mode**: it returns the most relevant documentation sections with links instead of a generated answer. Set `OPENROUTER_API_KEY` to any key with access to the configured models and generated answers come back automatically.
+
+| Answer with citations | Dark mode | Mobile |
+| --- | --- | --- |
+| ![Widget answer](docs/images/widget-answer.png) | ![Dark mode](docs/images/widget-dark.png) | ![Mobile](docs/images/widget-mobile.png) |
 
 - **Endpoint:** `POST /ask` → `{"answer": "...", "sources": ["<url>", ...]}`
 - **Demo page with the embedded widget:** `/demo` (also `/`)
@@ -111,6 +121,7 @@ eval/                olake_testcases.jsonl (official 20), questions.jsonl (30), 
 scripts/full_index.py  one-off full index into Qdrant
 models/              bundled BM25 + tiktoken files (no downloads on cold start)
 tests/               chunker, cache invalidation, citation post-processing, /ask contract
+docs/images/         widget screenshots used in this README
 index.py             Vercel entry point;  Dockerfile / docker-compose.yml for container runs
 ```
 
@@ -149,7 +160,7 @@ The live deployment is re-indexed by an external scheduler: a **cron-job.org job
 
 - **Input:** 1–1,000 characters, control characters stripped, unknown JSON fields ignored. Prompt-injection and "reveal your prompt" requests are refused before any LLM call.
 - **Output:**
-  - Citations are mapped to real blocks.
+  - Citations are mapped to real blocks; at most 5 sources, one per page.
   - Links not in the context, or not on `olake.io` or `github.com/datazip-inc`, are stripped.
   - Answers that echo the system prompt or look like an API key are replaced with a refusal.
   - Off-topic requests (poems, trivia) are politely redirected to OLake.
@@ -157,7 +168,8 @@ The live deployment is re-indexed by an external scheduler: a **cron-job.org job
 - **Timeouts and fallbacks:**
   - Embedding 20 s (bulk) with at most 2 tries per query, rerank 8 s, Qdrant 10 s, LLM 20 s with at most 1 retry, whole request 25 s (graders score answers within 30 s).
   - Retries use exponential backoff with jitter and respect `Retry-After`.
-  - If rerank fails, RRF order is used. If the LLM fails, other models are tried, then the endpoint returns 503.
+  - If rerank fails, RRF order is used. If the LLM fails, the other models are tried; if none answers (provider down, key revoked, credit exhausted), `/ask` still returns 200 with a **retrieval-only answer**: the top matching docs sections with excerpts and links, marked `X-Model: none (LLM unavailable, retrieval-only answer)` and never cached. After an auth or credit error the LLM is skipped for 5 minutes (circuit breaker), so fallback answers stay fast.
+  - Answers that hit the token cap are trimmed to the last complete paragraph (open code blocks and bold markers closed) and marked as shortened.
   - A failing source never stops the others from syncing.
 - **Observability:** structlog JSON logs with request IDs and per-stage timings, `/health` (503 until the index is ready), and FastAPI OpenAPI at `/docs`.
 - **Secrets** come only from environment variables. `.env` is git-ignored, and `.env.example` has no values.

@@ -26,6 +26,17 @@ class LLMClient:
         self.credit_checked: float | None = None
         self.calls = 0
         self.cost_usd = 0.0
+        self.down_until: float | None = None  # circuit breaker after auth/credit errors
+
+    def _check_available(self) -> None:
+        if self.budget_exhausted():
+            raise LLMUnavailable("budget exhausted")
+        if self.down_until is not None and time.monotonic() < self.down_until:
+            raise LLMUnavailable("LLM provider rejected the key recently")
+
+    def _trip(self, status: int | None) -> None:
+        if status in (401, 402, 403):
+            self.down_until = time.monotonic() + 300
 
     async def refresh_credit(self, force: bool = False) -> float | None:
         if not force and self.credit_checked is not None and time.monotonic() - self.credit_checked < 60:
@@ -69,8 +80,7 @@ class LLMClient:
     async def complete(self, messages: list[dict]) -> tuple[str, str]:
         """Returns (text, model_used, truncated)."""
         await self.refresh_credit()
-        if self.budget_exhausted():
-            raise LLMUnavailable("budget exhausted")
+        self._check_available()
         last: Exception | None = None
         async with self.sem:
             # one retry at most: OpenRouter already falls back across models server-side and graders allow 30 s
@@ -91,6 +101,7 @@ class LLMClient:
                     last = e
                     status = getattr(e, "status_code", None)
                     if status in (400, 401, 402, 403):
+                        self._trip(status)
                         break
                     await asyncio.sleep(0.5 * 2**attempt)
         log.error("llm_failed", error=str(last)[:300])
@@ -99,8 +110,7 @@ class LLMClient:
     async def stream(self, messages: list[dict]) -> AsyncIterator[tuple[str, str]]:
         """Yields ("model", id) once, then ("t", delta) tokens, then ("finish", finish_reason)."""
         await self.refresh_credit()
-        if self.budget_exhausted():
-            raise LLMUnavailable("budget exhausted")
+        self._check_available()
         async with self.sem:
             try:
                 stream = await self.client.chat.completions.create(**self._body(messages, True))
@@ -118,5 +128,6 @@ class LLMClient:
                 self._track(usage)
                 yield "finish", finish or "stop"
             except (APITimeoutError, RateLimitError, APIError, httpx.HTTPError) as e:
+                self._trip(getattr(e, "status_code", None))
                 log.error("llm_stream_failed", error=str(e)[:300])
                 raise LLMUnavailable(str(e)) from e

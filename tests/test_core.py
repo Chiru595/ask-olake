@@ -160,3 +160,10 @@ def test_trim_truncated_closes_markdown():
     from app.retrieval.pipeline import TRUNCATED_NOTE, trim_truncated
     out = trim_truncated("First paragraph is complete.\n\nSecond with ```code\nx = 1\nand **bold cut")
     assert out.endswith(TRUNCATED_NOTE) and out.count("```") % 2 == 0 and out.count("**") % 2 == 0
+
+
+def test_retrieval_only_fallback_lists_distinct_pages():
+    from app.retrieval.pipeline import retrieval_only
+    blocks = BLOCKS + [Block(3, "https://olake.io/docs/a/#y", "A", ["A", "Y"], "more", ["id3"], 0.7)]
+    answer, sources, titles = retrieval_only(blocks)
+    assert sources == ["https://olake.io/docs/a/#x", "https://olake.io/docs/b/"] and "[1]" in answer and "[2]" in answer
