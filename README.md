@@ -4,9 +4,7 @@ A production-grade RAG assistant for the [OLake](https://olake.io/docs/) docs. I
 
 **2nd prize at [Hacktoberfest Hack Day Bengaluru × OLake](https://events.mlh.com/events/15468-hacktoberfest-hack-day-bengaluru-x-olake) (October 2026).** Built in the 4-hour hacking window and scored on a hidden test set: 95% on the organisers' 20 public test cases on the live deployment, with a 100% contract and refusal pass rate.
 
-**Live:** https://ask-olake-sooty.vercel.app (demo page with the widget) · [`/status`](https://ask-olake-sooty.vercel.app/status) · [`/docs`](https://ask-olake-sooty.vercel.app/docs)
-
-> The hackathon's OpenRouter key has been retired, so the live site currently answers in **retrieval-only mode**: it returns the most relevant documentation sections with links instead of a generated answer. Set `OPENROUTER_API_KEY` to any key with access to the configured models and generated answers come back automatically.
+> The hosted demo from the hackathon has been taken offline. To run it yourself, see [Local development](#local-development) (one `docker compose up`) or deploy your own copy to Vercel. Without an LLM key it still works in **retrieval-only mode**, returning the most relevant documentation sections with links; set `OPENROUTER_API_KEY` to get generated, cited answers.
 
 | Answer with citations | Dark mode | Mobile |
 | --- | --- | --- |
@@ -23,7 +21,7 @@ A production-grade RAG assistant for the [OLake](https://olake.io/docs/) docs. I
 ## Quick start
 
 ```bash
-curl -s -X POST https://ask-olake-sooty.vercel.app/ask \
+curl -s -X POST https://<your-host>/ask \
   -H 'Content-Type: application/json' \
   -d '{"question": "What do I need to set up Postgres CDC?"}'
 ```
@@ -154,7 +152,7 @@ index.py             Vercel entry point;  Dockerfile / docker-compose.yml for co
 
 ### Scheduled re-index (production)
 
-The live deployment is re-indexed by an external scheduler: a **cron-job.org job calls `POST https://ask-olake-sooty.vercel.app/reindex` every 5 minutes** (`X-Admin-Key` header, body `{"scope":"incremental"}`). Each call runs one incremental sync inside the request (about 1 s when nothing changed) and returns `{"status":"done","changed":…,"deleted":…,"evicted":…}`. Between runs, opening `/status` triggers a sync if the last one is older than 60 s, so `/status` always shows live freshness. If the scheduler or a sync fails, `/ask` keeps answering from the last good index in Qdrant Cloud.
+During the hackathon the Vercel deployment was re-indexed by an external scheduler: a **cron-job.org job called `POST https://<your-host>/reindex` every 5 minutes** (`X-Admin-Key` header, body `{"scope":"incremental"}`). Each call runs one incremental sync inside the request (about 1 s when nothing changed) and returns `{"status":"done","changed":…,"deleted":…,"evicted":…}`. Between runs, opening `/status` triggers a sync if the last one is older than 60 s, so `/status` always shows live freshness. If the scheduler or a sync fails, `/ask` keeps answering from the last good index in Qdrant Cloud.
 
 ## Production readiness and guardrails
 
@@ -185,7 +183,7 @@ python eval/run_eval.py --base-url https://<your-host> --file eval/olake_testcas
 
 The runner checks the exact contract shape, refusal behaviour, page-level source hits, key-fact coverage and p50/p95 latency, and prints rerank top scores to help tune `REFUSAL_THRESHOLD`.
 
-Live deployment (`https://ask-olake-sooty.vercel.app`, DeepSeek V4.1 Flash primary):
+Hackathon deployment on Vercel (DeepSeek V4.1 Flash primary):
 
 | Set | Pass | Contract | Refusals correct | Source hit | Key facts | p50 / p95 latency |
 | --- | --- | --- | --- | --- | --- | --- |
