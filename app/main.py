@@ -7,7 +7,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
 
 from app.api import admin, ask, meta, status
@@ -89,6 +89,16 @@ app.include_router(admin.router)
 app.include_router(meta.router)
 if mcp is not None:
     app.mount("/mcp", mcp_asgi(mcp))
+
+
+FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" '
+           'fill="#2563eb"/><text x="16" y="22" font-family="Arial,sans-serif" font-size="18" font-weight="700" '
+           'fill="#fff" text-anchor="middle">O</text></svg>')
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(FAVICON, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/widget.js", include_in_schema=False)

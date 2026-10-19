@@ -144,3 +144,19 @@ def test_not_supported_answer_lists_support_sections():
     blocks = BLOCKS + [Block(3, "https://olake.io/docs/#supported-sources", "Overview", ["Overview", "Supported Sources"], "t", ["id3"], 0.0)]
     _, sources, _, refusal = postprocess("Cassandra is not supported by OLake [1].", blocks, "Cassandra in OLake?")
     assert not refusal and "https://olake.io/docs/#supported-sources" in sources
+
+
+def test_sources_one_per_page_and_capped():
+    blocks = [Block(i, f"https://olake.io/docs/p{i // 2}/#s{i}", "P", ["P", f"S{i}:"], "t", [f"id{i}"], 0.9)
+              for i in range(1, 15)]
+    text, sources, titles, _ = postprocess(" ".join(f"Fact [{i}]." for i in range(1, 15)), blocks)
+    pages = [u.split("#")[0] for u in sources]
+    assert len(sources) <= 5 and len(pages) == len(set(pages))
+    assert all(not t.endswith(":") for t in titles)
+    assert "[6]" not in text
+
+
+def test_trim_truncated_closes_markdown():
+    from app.retrieval.pipeline import TRUNCATED_NOTE, trim_truncated
+    out = trim_truncated("First paragraph is complete.\n\nSecond with ```code\nx = 1\nand **bold cut")
+    assert out.endswith(TRUNCATED_NOTE) and out.count("```") % 2 == 0 and out.count("**") % 2 == 0

@@ -67,7 +67,7 @@ class LLMClient:
             self.cost_usd += float(cost)
 
     async def complete(self, messages: list[dict]) -> tuple[str, str]:
-        """Returns (text, model_used)."""
+        """Returns (text, model_used, truncated)."""
         await self.refresh_credit()
         if self.budget_exhausted():
             raise LLMUnavailable("budget exhausted")
@@ -86,7 +86,7 @@ class LLMClient:
                         log.warning("llm_truncated_retry", model=resp.model, chars=len(text))
                         models = [m for m in self._models() if m != resp.model] or None
                         continue
-                    return text, resp.model
+                    return text, resp.model, choice.finish_reason == "length"
                 except (APITimeoutError, RateLimitError, APIError, httpx.HTTPError) as e:
                     last = e
                     status = getattr(e, "status_code", None)
@@ -97,23 +97,26 @@ class LLMClient:
         raise LLMUnavailable(str(last))
 
     async def stream(self, messages: list[dict]) -> AsyncIterator[tuple[str, str]]:
-        """Yields ("model", id) once, then ("t", delta) tokens."""
+        """Yields ("model", id) once, then ("t", delta) tokens, then ("finish", finish_reason)."""
         await self.refresh_credit()
         if self.budget_exhausted():
             raise LLMUnavailable("budget exhausted")
         async with self.sem:
             try:
                 stream = await self.client.chat.completions.create(**self._body(messages, True))
-                usage, model = None, None
+                usage, model, finish = None, None, None
                 async for ev in stream:
                     if getattr(ev, "usage", None):
                         usage = ev.usage
                     if model is None and getattr(ev, "model", None):
                         model = ev.model
                         yield "model", model
+                    if ev.choices and ev.choices[0].finish_reason:
+                        finish = ev.choices[0].finish_reason
                     if ev.choices and ev.choices[0].delta and ev.choices[0].delta.content:
                         yield "t", ev.choices[0].delta.content
                 self._track(usage)
+                yield "finish", finish or "stop"
             except (APITimeoutError, RateLimitError, APIError, httpx.HTTPError) as e:
                 log.error("llm_stream_failed", error=str(e)[:300])
                 raise LLMUnavailable(str(e)) from e
